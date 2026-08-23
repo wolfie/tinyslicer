@@ -3,7 +3,11 @@
 	import {
 		initializeBuildVolume,
 		isModelOutsideBuildVolume,
-		paintBuildVolume
+		paintBuildVolume,
+		startModelTranslation,
+		stopModelTranslation,
+		updateModelTranslation,
+		type ModelTranslation
 	} from '$lib/workspace/build-volume-renderer';
 	import { CanvasMetrics } from '$lib/workspace/canvas-metrics.svelte';
 	import { OrbitCamera } from '$lib/workspace/orbit-camera.svelte';
@@ -12,14 +16,23 @@
 	const camera = new OrbitCamera();
 	const canvasMetrics = new CanvasMetrics();
 	let model = $state.raw<ImportedStlModel | null>(null);
+	let modelTranslation = $state<ModelTranslation>({ x: 0, y: 0, z: 0 });
+	let modelDragging = $state(false);
 	let importState = $state<'idle' | 'loading' | 'error'>('idle');
 	let importError = $state('');
 	let isDraggingFile = $state(false);
-	let modelOutsideBuildVolume = $derived(model ? isModelOutsideBuildVolume(model) : false);
+	let modelOutsideBuildVolume = $derived(
+		model ? isModelOutsideBuildVolume(model, modelTranslation) : false
+	);
 	let dragDepth = 0;
 
 	function formatMillimetres(value: number): string {
 		return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+	}
+
+	function formatTranslation(value: number): string {
+		const rounded = Math.abs(value) < 0.005 ? 0 : value;
+		return `${rounded > 0 ? '+' : ''}${formatMillimetres(rounded)}`;
 	}
 
 	function formatFileSize(byteLength: number): string {
@@ -31,7 +44,9 @@
 		importState = 'loading';
 		importError = '';
 		try {
-			model = await importStlFile(file);
+			const importedModel = await importStlFile(file);
+			modelTranslation = { x: 0, y: 0, z: 0 };
+			model = importedModel;
 			importState = 'idle';
 		} catch (error) {
 			importState = 'error';
@@ -79,6 +94,32 @@
 		const file =
 			files.find((candidate) => candidate.name.toLowerCase().endsWith('.stl')) ?? files[0];
 		if (file) await loadStl(file);
+	}
+
+	function setModelTranslation(translation: ModelTranslation) {
+		modelTranslation = translation;
+	}
+
+	function handlePointerDown(event: PointerEvent) {
+		if (
+			model &&
+			startModelTranslation(event, modelTranslation, setModelTranslation, (dragging) => {
+				modelDragging = dragging;
+			})
+		) {
+			return;
+		}
+		camera.start(event);
+	}
+
+	function handlePointerMove(event: PointerEvent) {
+		if (updateModelTranslation(event)) return;
+		camera.update(event);
+	}
+
+	function handlePointerEnd(event: PointerEvent) {
+		if (stopModelTranslation(event)) return;
+		camera.stop(event);
 	}
 </script>
 
@@ -166,7 +207,7 @@
 				</div>
 				<div class="view-chip"><span></span> Perspective</div>
 			</div>
-			<div class="viewport-canvas" class:orbiting={camera.orbiting}>
+			<div class={['viewport-canvas', { orbiting: camera.orbiting, translating: modelDragging }]}>
 				<canvas
 					{@attach canvasMetrics.observe}
 					{@attach initializeBuildVolume}
@@ -176,14 +217,15 @@
 						width: canvasMetrics.width,
 						height: canvasMetrics.height,
 						dpr: canvasMetrics.dpr,
-						model
+						model,
+						modelTranslation
 					})}
-					onpointerdown={camera.start}
-					onpointermove={camera.update}
-					onpointerup={camera.stop}
-					onpointercancel={camera.stop}
+					onpointerdown={handlePointerDown}
+					onpointermove={handlePointerMove}
+					onpointerup={handlePointerEnd}
+					onpointercancel={handlePointerEnd}
 					onauxclick={(event) => event.preventDefault()}
-					aria-label={`Interactive 3D view of the ${TINYMAKER_PROFILE.buildVolume.x} by ${TINYMAKER_PROFILE.buildVolume.y} by ${TINYMAKER_PROFILE.buildVolume.z} millimetre ${TINYMAKER_PROFILE.name} build volume${model ? ` containing ${model.name}` : ''}. Drag with the middle mouse button to orbit.`}
+					aria-label={`Interactive 3D view of the ${TINYMAKER_PROFILE.buildVolume.x} by ${TINYMAKER_PROFILE.buildVolume.y} by ${TINYMAKER_PROFILE.buildVolume.z} millimetre ${TINYMAKER_PROFILE.name} build volume${model ? ` containing ${model.name}. Drag the model to move it on X and Y, Shift-drag it to move on Z, or click an arrow to nudge it` : ''}. Drag with the middle mouse button to orbit.`}
 				></canvas>
 				<div class="axis-legend" aria-label="Axis directions">
 					<span class="axis-x"><i></i>X <small>{TINYMAKER_PROFILE.buildVolume.x} mm</small></span>
@@ -195,9 +237,15 @@
 						><circle cx="9" cy="9" r="7" /><path d="M9 8v4m0-7v.1" /></svg
 					>X/Y origin is the upper-left of the layer image · Z=0 is the build plate
 				</div>
-				<div class="orbit-hint" class:active={camera.orbiting}>
+				<div class="orbit-hint" class:active={camera.orbiting || modelDragging}>
 					<span class="mouse-icon" aria-hidden="true"><i></i></span><span
-						>{camera.orbiting ? 'Orbiting view' : 'Middle-drag to orbit'}</span
+						>{modelDragging
+							? 'Moving model'
+							: camera.orbiting
+								? 'Orbiting view'
+								: model
+									? 'Drag model · Shift-drag Z · Middle-drag orbit'
+									: 'Middle-drag to orbit'}</span
 					>
 				</div>
 				{#if modelOutsideBuildVolume}
@@ -226,7 +274,11 @@
 				</div>
 				{#if model}
 					<div class="model-state">
-						<div class="model-position"><span></span>Centered on build plate</div>
+						<div class="model-position">
+							<span></span>Offset X {formatTranslation(modelTranslation.x)} · Y
+							{formatTranslation(modelTranslation.y)} · Z
+							{formatTranslation(modelTranslation.z)} mm
+						</div>
 						<dl class="model-details">
 							<div>
 								<dt>Dimensions</dt>
@@ -610,7 +662,8 @@
 		cursor: default;
 		touch-action: none;
 	}
-	.viewport-canvas.orbiting canvas {
+	.viewport-canvas.orbiting canvas,
+	.viewport-canvas.translating canvas {
 		cursor: grabbing;
 	}
 	.axis-legend {
