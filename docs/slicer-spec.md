@@ -33,14 +33,14 @@ The following are outside the initial scope:
 
 TinySlicer initially targets one fixed printer profile.
 
-| Property | Value |
-| --- | ---: |
-| LCD resolution | 320 x 240 px |
-| Physical X size | 40.8 mm |
-| Physical Y size | 30.6 mm |
-| Maximum Z | 60 mm |
-| Pixel pitch | 0.1275 mm square |
-| File-format Z interval | 0.05 mm |
+| Property               |            Value |
+| ---------------------- | ---------------: |
+| LCD resolution         |     320 x 240 px |
+| Physical X size        |          40.8 mm |
+| Physical Y size        |          30.6 mm |
+| Maximum Z              |            60 mm |
+| Pixel pitch            | 0.1275 mm square |
+| File-format Z interval |          0.05 mm |
 
 The 60 mm Z limit is derived from the printer's example jobs. It should remain a named profile constant so that it can be corrected without changing slicing code.
 
@@ -123,13 +123,13 @@ A support consists of:
 
 Initial defaults:
 
-| Part | Default |
-| --- | ---: |
-| Shaft diameter | 1.275 mm (10 px) |
-| Foot diameter | 2.0 mm |
-| Tapered neck length | 1.5 mm |
-| Neck diameter at shaft | 0.8 mm |
-| Contact diameter | 0.4 mm |
+| Part                   |          Default |
+| ---------------------- | ---------------: |
+| Shaft diameter         | 1.275 mm (10 px) |
+| Foot diameter          |           2.0 mm |
+| Tapered neck length    |           1.5 mm |
+| Neck diameter at shaft |           0.8 mm |
+| Contact diameter       |           0.4 mm |
 
 These dimensions must be central constants even if the MVP does not expose them as user settings.
 
@@ -228,15 +228,15 @@ Required fixed profile metadata includes:
 
 The initial exposure and motion defaults observed in the example jobs are:
 
-| Setting | Default |
-| --- | ---: |
-| Normal exposure | 13 s |
-| Bottom exposure | 38 s |
-| Bottom layers | 4 |
-| Normal lift height | 2 mm |
-| Normal lift speed | 100 |
-| Normal drop speed | 100 |
-| Light-off times | 0 |
+| Setting            | Default |
+| ------------------ | ------: |
+| Normal exposure    |    13 s |
+| Bottom exposure    |    38 s |
+| Bottom layers      |       4 |
+| Normal lift height |    2 mm |
+| Normal lift speed  |     100 |
+| Normal drop speed  |     100 |
+| Light-off times    |       0 |
 
 For `N` images, the header contains `;totalLayer:N`, followed by `N` blocks:
 
