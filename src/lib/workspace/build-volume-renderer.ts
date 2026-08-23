@@ -10,10 +10,12 @@ import {
 	Line,
 	LineBasicMaterial,
 	LineSegments,
+	Material,
 	Mesh,
 	MeshBasicMaterial,
 	MeshStandardMaterial,
 	PerspectiveCamera,
+	Plane,
 	PlaneGeometry,
 	Scene,
 	SphereGeometry,
@@ -38,6 +40,32 @@ const BUILD_VOLUME = TINYMAKER_PROFILE.buildVolume;
 const CAMERA_TARGET = new Vector3(BUILD_VOLUME.x / 2, BUILD_VOLUME.y / 2, BUILD_VOLUME.z * 0.42);
 const CAMERA_DISTANCE = 112;
 
+type ClippedRegion = 'inside' | 'outside';
+
+export function createBuildVolumeClippingPlanes(region: ClippedRegion): Plane[] {
+	const planes = [
+		new Plane(new Vector3(1, 0, 0), 0),
+		new Plane(new Vector3(-1, 0, 0), BUILD_VOLUME.x),
+		new Plane(new Vector3(0, 1, 0), 0),
+		new Plane(new Vector3(0, -1, 0), BUILD_VOLUME.y),
+		new Plane(new Vector3(0, 0, 1), 0),
+		new Plane(new Vector3(0, 0, -1), BUILD_VOLUME.z)
+	];
+
+	return region === 'inside' ? planes : planes.map((plane) => plane.negate());
+}
+
+export function isModelOutsideBuildVolume(model: ImportedStlModel): boolean {
+	return (
+		model.bounds.min.x < 0 ||
+		model.bounds.max.x > BUILD_VOLUME.x ||
+		model.bounds.min.y < 0 ||
+		model.bounds.max.y > BUILD_VOLUME.y ||
+		model.bounds.min.z < 0 ||
+		model.bounds.max.z > BUILD_VOLUME.z
+	);
+}
+
 class BuildVolumeViewport {
 	#renderer: WebGLRenderer;
 	#scene = new Scene();
@@ -46,9 +74,19 @@ class BuildVolumeViewport {
 		color: 0x62b7ed,
 		roughness: 0.62,
 		metalness: 0.04,
-		side: DoubleSide
+		side: DoubleSide,
+		clippingPlanes: createBuildVolumeClippingPlanes('inside')
+	});
+	#outsideModelMaterial = new MeshStandardMaterial({
+		color: 0xffc84a,
+		roughness: 0.62,
+		metalness: 0.04,
+		side: DoubleSide,
+		clippingPlanes: createBuildVolumeClippingPlanes('outside'),
+		clipIntersection: true
 	});
 	#modelMesh: Mesh | null = null;
+	#outsideModelMesh: Mesh | null = null;
 	#currentModel: ImportedStlModel | null = null;
 	#pendingState: BuildVolumeRenderState | null = null;
 	#animationFrame: number | null = null;
@@ -65,6 +103,7 @@ class BuildVolumeViewport {
 		});
 		this.#renderer.setClearColor(0x000000, 0);
 		this.#renderer.outputColorSpace = SRGBColorSpace;
+		this.#renderer.localClippingEnabled = true;
 		this.#camera.up.set(0, 0, 1);
 		this.#scene.add(this.#createBuildVolume());
 		this.#scene.add(new HemisphereLight(0xddeeff, 0x152536, 1.65));
@@ -92,13 +131,19 @@ class BuildVolumeViewport {
 
 	dispose() {
 		if (this.#animationFrame !== null) cancelAnimationFrame(this.#animationFrame);
+		const geometries = new Set<BufferGeometry>();
+		const materials = new Set<Material>([this.#modelMaterial, this.#outsideModelMaterial]);
 		this.#scene.traverse((object) => {
 			if (object instanceof Mesh || object instanceof Line) {
-				object.geometry.dispose();
-				const materials = Array.isArray(object.material) ? object.material : [object.material];
-				for (const material of materials) material.dispose();
+				geometries.add(object.geometry);
+				const objectMaterials = Array.isArray(object.material)
+					? object.material
+					: [object.material];
+				for (const material of objectMaterials) materials.add(material);
 			}
 		});
+		for (const geometry of geometries) geometry.dispose();
+		for (const material of materials) material.dispose();
 		this.#renderer.dispose();
 	}
 
@@ -135,6 +180,10 @@ class BuildVolumeViewport {
 			this.#modelMesh.geometry.dispose();
 			this.#modelMesh = null;
 		}
+		if (this.#outsideModelMesh) {
+			this.#scene.remove(this.#outsideModelMesh);
+			this.#outsideModelMesh = null;
+		}
 		if (!model) return;
 
 		const geometry = new BufferGeometry();
@@ -143,7 +192,10 @@ class BuildVolumeViewport {
 		geometry.computeBoundingSphere();
 		this.#modelMesh = new Mesh(geometry, this.#modelMaterial);
 		this.#modelMesh.renderOrder = 1;
+		this.#outsideModelMesh = new Mesh(geometry, this.#outsideModelMaterial);
+		this.#outsideModelMesh.renderOrder = 2;
 		this.#scene.add(this.#modelMesh);
+		this.#scene.add(this.#outsideModelMesh);
 	}
 
 	#createBuildVolume(): Group {

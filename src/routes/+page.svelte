@@ -1,6 +1,10 @@
 <script lang="ts">
 	import { TINYMAKER_PROFILE } from '$lib/printer/tinymaker';
-	import { initializeBuildVolume, paintBuildVolume } from '$lib/workspace/build-volume-renderer';
+	import {
+		initializeBuildVolume,
+		isModelOutsideBuildVolume,
+		paintBuildVolume
+	} from '$lib/workspace/build-volume-renderer';
 	import { CanvasMetrics } from '$lib/workspace/canvas-metrics.svelte';
 	import { OrbitCamera } from '$lib/workspace/orbit-camera.svelte';
 	import { importStlFile, type ImportedStlModel } from '$lib/workspace/stl-importer';
@@ -11,6 +15,7 @@
 	let importState = $state<'idle' | 'loading' | 'error'>('idle');
 	let importError = $state('');
 	let isDraggingFile = $state(false);
+	let modelOutsideBuildVolume = $derived(model ? isModelOutsideBuildVolume(model) : false);
 	let dragDepth = 0;
 
 	function formatMillimetres(value: number): string {
@@ -195,6 +200,18 @@
 						>{camera.orbiting ? 'Orbiting view' : 'Middle-drag to orbit'}</span
 					>
 				</div>
+				{#if modelOutsideBuildVolume}
+					<div class="volume-warning" role="alert">
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<path d="M12 3 22 20H2L12 3Z" />
+							<path d="M12 9v5m0 3v.1" />
+						</svg>
+						<div>
+							<strong>Outside print volume</strong>
+							<span>The model extends beyond the printable area.</span>
+						</div>
+					</div>
+				{/if}
 			</div>
 		</section>
 
@@ -680,6 +697,50 @@
 		border-color: rgba(90, 168, 228, 0.55);
 		color: #a8d9ff;
 	}
+	.volume-warning {
+		position: absolute;
+		right: 17px;
+		bottom: 17px;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		max-width: 260px;
+		padding: 9px 11px;
+		border: 1px solid rgba(255, 200, 74, 0.48);
+		border-radius: 8px;
+		background: rgba(49, 38, 13, 0.88);
+		box-shadow:
+			0 8px 24px rgba(0, 0, 0, 0.24),
+			inset 0 1px rgba(255, 226, 154, 0.06);
+		color: #ffc84a;
+		backdrop-filter: blur(8px);
+		pointer-events: none;
+	}
+	.volume-warning svg {
+		width: 22px;
+		flex: 0 0 auto;
+		fill: rgba(255, 200, 74, 0.1);
+		stroke: currentColor;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+		stroke-width: 1.6;
+	}
+	.volume-warning div {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+	.volume-warning strong {
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.02em;
+		text-transform: uppercase;
+	}
+	.volume-warning span {
+		color: #d8b867;
+		font-size: 9px;
+		line-height: 1.35;
+	}
 	.mouse-icon {
 		position: relative;
 		display: inline-block;
@@ -888,6 +949,11 @@
 		}
 		.axis-legend small {
 			display: none;
+		}
+		.volume-warning {
+			right: 12px;
+			bottom: 54px;
+			max-width: calc(100% - 24px);
 		}
 	}
 </style>
