@@ -2,6 +2,8 @@ const ORBIT_SENSITIVITY = 0.007;
 const MIN_PITCH = -1.38;
 const MAX_PITCH = 1.45;
 
+type OrbitDirection = { x: number; y: number; z: number };
+
 export class OrbitCamera {
 	yaw = $state(-0.86);
 	pitch = $state(0.58);
@@ -38,5 +40,10 @@ export class OrbitCamera {
 		if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
 		this.#activePointer = null;
 		this.orbiting = false;
+	};
+
+	orbitToward = (direction: OrbitDirection) => {
+		this.yaw = Math.atan2(direction.y, direction.x);
+		this.pitch = Math.atan2(direction.z, Math.hypot(direction.x, direction.y));
 	};
 }

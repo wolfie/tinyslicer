@@ -7,6 +7,7 @@ import {
 	createBuildVolumeClippingPlanes,
 	createMillimetreRulerVertices,
 	createRotationRingGeometry,
+	firstBuildVolumeOverflowDirection,
 	IDENTITY_MODEL_ROTATION,
 	isModelOutsideBuildVolume,
 	nudgeModelTranslation,
@@ -120,6 +121,54 @@ function modelWithBounds(
 }
 
 describe('build volume fit', () => {
+	it.each([
+		[
+			{ x: -0.01, y: 1, z: 1 },
+			{ x: 1, y: 2, z: 2 },
+			{ x: -1, y: 0, z: 0 }
+		],
+		[
+			{ x: 1, y: 1, z: 1 },
+			{ x: TINYMAKER_PROFILE.buildVolume.x + 0.01, y: 2, z: 2 },
+			{ x: 1, y: 0, z: 0 }
+		],
+		[
+			{ x: 1, y: -0.01, z: 1 },
+			{ x: 2, y: 2, z: 2 },
+			{ x: 0, y: -1, z: 0 }
+		],
+		[
+			{ x: 1, y: 1, z: 1 },
+			{ x: 2, y: TINYMAKER_PROFILE.buildVolume.y + 0.01, z: 2 },
+			{ x: 0, y: 1, z: 0 }
+		],
+		[
+			{ x: 1, y: 1, z: -0.01 },
+			{ x: 2, y: 2, z: 2 },
+			{ x: 0, y: 0, z: -1 }
+		],
+		[
+			{ x: 1, y: 1, z: 1 },
+			{ x: 2, y: 2, z: TINYMAKER_PROFILE.buildVolume.z + 0.01 },
+			{ x: 0, y: 0, z: 1 }
+		]
+	])('finds the outward camera direction for an overflowing face', (min, max, expected) => {
+		expect(firstBuildVolumeOverflowDirection({ min, max })).toEqual(expected);
+	});
+
+	it('keeps a stable face priority when the model overflows in multiple directions', () => {
+		expect(
+			firstBuildVolumeOverflowDirection({
+				min: { x: -1, y: -1, z: -1 },
+				max: {
+					x: TINYMAKER_PROFILE.buildVolume.x + 1,
+					y: TINYMAKER_PROFILE.buildVolume.y + 1,
+					z: TINYMAKER_PROFILE.buildVolume.z + 1
+				}
+			})
+		).toEqual({ x: -1, y: 0, z: 0 });
+	});
+
 	it('accepts a model touching every build volume boundary', () => {
 		const { x, y, z } = TINYMAKER_PROFILE.buildVolume;
 		const model = modelWithBounds({ x: 0, y: 0, z: 0 }, { x, y, z });

@@ -326,14 +326,17 @@ export function transformModelGeometryBounds(
 }
 
 export function areBoundsOutsideBuildVolume(bounds: Bounds3): boolean {
-	return (
-		bounds.min.x < -BUILD_VOLUME_BOUNDS_EPSILON ||
-		bounds.max.x > BUILD_VOLUME.x + BUILD_VOLUME_BOUNDS_EPSILON ||
-		bounds.min.y < -BUILD_VOLUME_BOUNDS_EPSILON ||
-		bounds.max.y > BUILD_VOLUME.y + BUILD_VOLUME_BOUNDS_EPSILON ||
-		bounds.min.z < -BUILD_VOLUME_BOUNDS_EPSILON ||
-		bounds.max.z > BUILD_VOLUME.z + BUILD_VOLUME_BOUNDS_EPSILON
-	);
+	return firstBuildVolumeOverflowDirection(bounds) !== null;
+}
+
+export function firstBuildVolumeOverflowDirection(bounds: Bounds3): Point3 | null {
+	if (bounds.min.x < -BUILD_VOLUME_BOUNDS_EPSILON) return { x: -1, y: 0, z: 0 };
+	if (bounds.max.x > BUILD_VOLUME.x + BUILD_VOLUME_BOUNDS_EPSILON) return { x: 1, y: 0, z: 0 };
+	if (bounds.min.y < -BUILD_VOLUME_BOUNDS_EPSILON) return { x: 0, y: -1, z: 0 };
+	if (bounds.max.y > BUILD_VOLUME.y + BUILD_VOLUME_BOUNDS_EPSILON) return { x: 0, y: 1, z: 0 };
+	if (bounds.min.z < -BUILD_VOLUME_BOUNDS_EPSILON) return { x: 0, y: 0, z: -1 };
+	if (bounds.max.z > BUILD_VOLUME.z + BUILD_VOLUME_BOUNDS_EPSILON) return { x: 0, y: 0, z: 1 };
+	return null;
 }
 
 export function isModelOutsideBuildVolume(

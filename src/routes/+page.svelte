@@ -2,6 +2,7 @@
 	import { TINYMAKER_PROFILE } from '$lib/printer/tinymaker';
 	import {
 		areBoundsOutsideBuildVolume,
+		firstBuildVolumeOverflowDirection,
 		IDENTITY_MODEL_ROTATION,
 		ROTATION_SNAP_DEGREES,
 		initializeBuildVolume,
@@ -132,6 +133,12 @@
 
 	function setModelRotation(rotation: ModelRotation) {
 		modelRotation = rotation;
+	}
+
+	function focusFirstClippedRegion() {
+		if (!transformedModelBounds) return;
+		const direction = firstBuildVolumeOverflowDirection(transformedModelBounds);
+		if (direction) camera.orbitToward(direction);
 	}
 
 	function handlePointerDown(event: PointerEvent) {
@@ -302,16 +309,22 @@
 					>
 				</div>
 				{#if modelOutsideBuildVolume}
-					<div class="volume-warning" role="alert">
+					<button
+						type="button"
+						class="volume-warning"
+						onclick={focusFirstClippedRegion}
+						aria-live="assertive"
+						aria-label="Outside print volume. Show the first area beyond the printable volume."
+					>
 						<svg viewBox="0 0 24 24" aria-hidden="true">
 							<path d="M12 3 22 20H2L12 3Z" />
 							<path d="M12 9v5m0 3v.1" />
 						</svg>
 						<div>
 							<strong>Outside print volume</strong>
-							<span>The model extends beyond the printable area.</span>
+							<span>Click to inspect the first clipped area.</span>
 						</div>
-					</div>
+					</button>
 				{/if}
 			</div>
 		</section>
@@ -825,7 +838,20 @@
 			inset 0 1px rgba(255, 226, 154, 0.06);
 		color: #ffc84a;
 		backdrop-filter: blur(8px);
-		pointer-events: none;
+		cursor: pointer;
+		text-align: left;
+		transition:
+			border-color 120ms ease,
+			background 120ms ease,
+			box-shadow 120ms ease;
+	}
+	.volume-warning:hover {
+		border-color: rgba(255, 210, 92, 0.72);
+		background: rgba(63, 48, 16, 0.94);
+	}
+	.volume-warning:focus-visible {
+		outline: 2px solid #ffd46d;
+		outline-offset: 3px;
 	}
 	.volume-warning svg {
 		width: 22px;
