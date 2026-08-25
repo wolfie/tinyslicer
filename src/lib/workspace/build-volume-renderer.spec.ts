@@ -11,6 +11,7 @@ import {
 	isModelOutsideBuildVolume,
 	nudgeModelTranslation,
 	ROTATION_SNAP_DEGREES,
+	signedRotationAngle,
 	snapRotationAngle,
 	transformModelBounds,
 	transformModelGeometryBounds,
@@ -330,5 +331,24 @@ describe('model rotation snapping', () => {
 	it('leaves the angle untouched while free rotation is enabled', () => {
 		const angle = Math.PI / 7;
 		expect(snapRotationAngle(angle, true)).toBe(angle);
+	});
+});
+
+describe('physical rotation dragging', () => {
+	const axis = new Vector3(0, 1, 0);
+
+	it('maps opposite points on a ring to a 180 degree rotation', () => {
+		const angle = signedRotationAngle(new Vector3(1, 0, 0), new Vector3(-1, 0, 0), axis);
+
+		expect(Math.abs(angle)).toBeCloseTo(Math.PI);
+	});
+
+	it('tracks the signed angle between successive grab points', () => {
+		const firstQuarter = signedRotationAngle(new Vector3(1, 0, 0), new Vector3(0, 0, -1), axis);
+		const secondQuarter = signedRotationAngle(new Vector3(0, 0, -1), new Vector3(-1, 0, 0), axis);
+
+		expect(firstQuarter).toBeCloseTo(Math.PI / 2);
+		expect(secondQuarter).toBeCloseTo(Math.PI / 2);
+		expect(firstQuarter + secondQuarter).toBeCloseTo(Math.PI);
 	});
 });

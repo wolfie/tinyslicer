@@ -129,10 +129,11 @@ type ActiveRotationDrag = {
 	kind: 'rotation';
 	pointerId: number;
 	axis: RotationAxis;
+	plane: Plane;
+	center: Vector3;
+	previousRadial: Vector3;
+	accumulatedAngle: number;
 	initialRotation: Quaternion;
-	startPointer: Vector2;
-	screenTangent: Vector2;
-	pixelsPerRadian: number;
 	onChange: (rotation: ModelRotation) => void;
 	onInteractionChange: (interaction: ModelInteraction | null) => void;
 };
@@ -219,6 +220,20 @@ function toQuaternion(rotation: ModelRotation): Quaternion {
 
 export function snapRotationAngle(angle: number, freeRotation = false): number {
 	return freeRotation ? angle : Math.round(angle / ROTATION_SNAP_RADIANS) * ROTATION_SNAP_RADIANS;
+}
+
+export function signedRotationAngle(from: Vector3, to: Vector3, axis: Vector3): number {
+	const normalizedAxis = axis.clone().normalize();
+	const planarFrom = from.clone().addScaledVector(normalizedAxis, -from.dot(normalizedAxis));
+	const planarTo = to.clone().addScaledVector(normalizedAxis, -to.dot(normalizedAxis));
+	if (planarFrom.lengthSq() === 0 || planarTo.lengthSq() === 0) return 0;
+
+	planarFrom.normalize();
+	planarTo.normalize();
+	return Math.atan2(
+		normalizedAxis.dot(planarFrom.clone().cross(planarTo)),
+		planarFrom.dot(planarTo)
+	);
 }
 
 export function modelRotationDegrees(rotation: ModelRotation): ModelTranslation {
@@ -501,12 +516,18 @@ class BuildVolumeViewport {
 		const drag = this.#activeModelDrag;
 		if (!drag || drag.pointerId !== event.pointerId) return false;
 		if (drag.kind === 'rotation') {
-			const pointerDelta = new Vector2(
-				event.clientX - drag.startPointer.x,
-				event.clientY - drag.startPointer.y
-			);
-			const rawAngle = pointerDelta.dot(drag.screenTangent) / drag.pixelsPerRadian;
-			const angle = snapRotationAngle(rawAngle, event.shiftKey);
+			this.#setPointer(event);
+			const point = this.#raycaster.ray.intersectPlane(drag.plane, new Vector3());
+			if (!point) return true;
+
+			const radial = point.sub(drag.center);
+			radial.addScaledVector(drag.axis.vector, -radial.dot(drag.axis.vector));
+			if (radial.lengthSq() < 1e-8) return true;
+			radial.normalize();
+
+			drag.accumulatedAngle += signedRotationAngle(drag.previousRadial, radial, drag.axis.vector);
+			drag.previousRadial.copy(radial);
+			const angle = snapRotationAngle(drag.accumulatedAngle, event.shiftKey);
 			const deltaRotation = new Quaternion().setFromAxisAngle(drag.axis.vector, angle);
 			const rotation = deltaRotation.multiply(drag.initialRotation).normalize();
 			drag.onChange({ x: rotation.x, y: rotation.y, z: rotation.z, w: rotation.w });
@@ -562,14 +583,10 @@ class BuildVolumeViewport {
 					this.#currentTranslation.z
 				)
 			);
-		const radial = hitPoint.clone().sub(center).normalize();
-		const tangent = axis.vector.clone().cross(radial).normalize();
-		const centerOnScreen = this.#worldToScreen(center);
-		const tangentOnScreen = this.#worldToScreen(
-			center.clone().addScaledVector(tangent, this.#rotationRingRadius)
-		).sub(centerOnScreen);
-		const pixelsPerRadian = tangentOnScreen.length();
-		if (pixelsPerRadian < 4) return false;
+		const radial = hitPoint.clone().sub(center);
+		radial.addScaledVector(axis.vector, -radial.dot(axis.vector));
+		if (radial.lengthSq() < 1e-8) return false;
+		radial.normalize();
 
 		event.preventDefault();
 		this.#canvas.setPointerCapture(event.pointerId);
@@ -577,10 +594,11 @@ class BuildVolumeViewport {
 			kind: 'rotation',
 			pointerId: event.pointerId,
 			axis,
+			plane: new Plane().setFromNormalAndCoplanarPoint(axis.vector, center),
+			center,
+			previousRadial: radial,
+			accumulatedAngle: 0,
 			initialRotation: toQuaternion(rotation),
-			startPointer: new Vector2(event.clientX, event.clientY),
-			screenTangent: tangentOnScreen.normalize(),
-			pixelsPerRadian,
 			onChange,
 			onInteractionChange
 		};
@@ -718,14 +736,6 @@ class BuildVolumeViewport {
 			-((event.clientY - bounds.top) / bounds.height) * 2 + 1
 		);
 		this.#raycaster.setFromCamera(this.#pointer, this.#camera);
-	}
-
-	#worldToScreen(point: Vector3): Vector2 {
-		const projected = point.clone().project(this.#camera);
-		return new Vector2(
-			((projected.x + 1) * this.#width) / 2,
-			((-projected.y + 1) * this.#height) / 2
-		);
 	}
 
 	#cancelModelDrag() {
