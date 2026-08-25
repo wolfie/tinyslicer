@@ -67,6 +67,10 @@ const RULER_MAJOR_TICK_LENGTH = 1.2;
 const ARROW_OUTSET = 3;
 const ARROW_LENGTH = 10;
 const ARROW_WIDTH = 4.5;
+const ARROW_OPACITY = 0.68;
+const ARROW_CROSSFADE_START = Math.PI / 6;
+const ARROW_CROSSFADE_MIDPOINT = Math.PI / 4;
+const ARROW_CROSSFADE_END = Math.PI / 3;
 const SMALL_TRANSLATION_STEP = 1;
 const LARGE_TRANSLATION_STEP = 5;
 export const ROTATION_SNAP_DEGREES = 22.5;
@@ -89,6 +93,8 @@ type TranslationArrowPlane = Mesh<PlaneGeometry, MeshBasicMaterial>;
 type TranslationArrow = {
 	direction: TranslationDirection;
 	group: Group;
+	planes: [TranslationArrowPlane, TranslationArrowPlane];
+	normals: [Vector3, Vector3];
 };
 
 type RotationAxis = {
@@ -167,6 +173,22 @@ export function nudgeModelTranslation(
 ): ModelTranslation {
 	const distance = largeStep ? LARGE_TRANSLATION_STEP : SMALL_TRANSLATION_STEP;
 	return { ...translation, [axis]: translation[axis] + sign * distance };
+}
+
+function smoothstep(start: number, end: number, value: number): number {
+	const progress = Math.max(0, Math.min(1, (value - start) / (end - start)));
+	return progress * progress * (3 - 2 * progress);
+}
+
+export function translationArrowPlaneWeights(
+	firstPlaneFacing: number,
+	crossedPlaneFacing: number
+): [number, number] {
+	const viewingAngle = Math.atan2(Math.abs(crossedPlaneFacing), Math.abs(firstPlaneFacing));
+	return [
+		1 - smoothstep(ARROW_CROSSFADE_MIDPOINT, ARROW_CROSSFADE_END, viewingAngle),
+		smoothstep(ARROW_CROSSFADE_START, ARROW_CROSSFADE_MIDPOINT, viewingAngle)
+	];
 }
 
 export function translateModelBounds(
@@ -418,7 +440,10 @@ class BuildVolumeViewport {
 			);
 		}
 
-		const arrowHit = this.#raycaster.intersectObjects(this.#translationArrowHitTargets, false)[0];
+		const arrowHit = this.#raycaster.intersectObjects(
+			this.#translationArrowHitTargets.filter((target) => target.visible),
+			false
+		)[0];
 		if (arrowHit) {
 			event.preventDefault();
 			const arrow = arrowHit.object as TranslationArrowPlane;
@@ -730,17 +755,18 @@ class BuildVolumeViewport {
 
 	#createTranslationArrows() {
 		for (const direction of TRANSLATION_DIRECTIONS) {
-			const material = new MeshBasicMaterial({
-				map: this.#arrowTexture,
-				color: direction.color,
-				depthTest: false,
-				depthWrite: false,
-				opacity: 0.68,
-				side: DoubleSide,
-				transparent: true
-			});
-			const firstPlane = new Mesh(this.#arrowGeometry, material) as TranslationArrowPlane;
-			const crossedPlane = new Mesh(this.#arrowGeometry, material) as TranslationArrowPlane;
+			const createMaterial = () =>
+				new MeshBasicMaterial({
+					map: this.#arrowTexture,
+					color: direction.color,
+					depthTest: false,
+					depthWrite: false,
+					opacity: ARROW_OPACITY,
+					side: DoubleSide,
+					transparent: true
+				});
+			const firstPlane = new Mesh(this.#arrowGeometry, createMaterial()) as TranslationArrowPlane;
+			const crossedPlane = new Mesh(this.#arrowGeometry, createMaterial()) as TranslationArrowPlane;
 			crossedPlane.rotation.x = Math.PI / 2;
 
 			for (const plane of [firstPlane, crossedPlane]) {
@@ -753,7 +779,15 @@ class BuildVolumeViewport {
 			group.add(firstPlane, crossedPlane);
 			group.quaternion.setFromUnitVectors(new Vector3(1, 0, 0), direction.vector);
 			group.visible = false;
-			this.#translationArrows.push({ direction, group });
+			this.#translationArrows.push({
+				direction,
+				group,
+				planes: [firstPlane, crossedPlane],
+				normals: [
+					new Vector3(0, 0, 1).applyQuaternion(group.quaternion),
+					new Vector3(0, -1, 0).applyQuaternion(group.quaternion)
+				]
+			});
 			this.#scene.add(group);
 		}
 	}
@@ -817,6 +851,16 @@ class BuildVolumeViewport {
 				Math.abs(direction.z) * halfDimensions.z;
 			arrow.group.position.copy(center).addScaledVector(direction, extent + ARROW_OUTSET);
 			arrow.group.visible = true;
+
+			const viewDirection = this.#camera.position.clone().sub(arrow.group.position).normalize();
+			const [firstWeight, crossedWeight] = translationArrowPlaneWeights(
+				viewDirection.dot(arrow.normals[0]),
+				viewDirection.dot(arrow.normals[1])
+			);
+			arrow.planes[0].material.opacity = ARROW_OPACITY * firstWeight;
+			arrow.planes[0].visible = firstWeight > 0;
+			arrow.planes[1].material.opacity = ARROW_OPACITY * crossedWeight;
+			arrow.planes[1].visible = crossedWeight > 0;
 		}
 	}
 
