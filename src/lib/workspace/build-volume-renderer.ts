@@ -3,6 +3,7 @@ import {
 	BufferAttribute,
 	BufferGeometry,
 	CanvasTexture,
+	CylinderGeometry,
 	DirectionalLight,
 	DoubleSide,
 	Euler,
@@ -77,6 +78,9 @@ export const ROTATION_SNAP_DEGREES = 22.5;
 const ROTATION_SNAP_RADIANS = (ROTATION_SNAP_DEGREES * Math.PI) / 180;
 const ROTATION_RING_GAP = 2.5;
 const MIN_ROTATION_RING_RADIUS = 5;
+const ROTATION_RING_INNER_RADIUS = 0.972;
+const ROTATION_RING_OUTER_RADIUS = 1;
+const ROTATION_RING_SEGMENTS = 96;
 const BUILD_VOLUME_BOUNDS_EPSILON = 1e-6;
 const ZERO_TRANSLATION: ModelTranslation = { x: 0, y: 0, z: 0 };
 export const IDENTITY_MODEL_ROTATION: ModelRotation = { x: 0, y: 0, z: 0, w: 1 };
@@ -221,6 +225,14 @@ export function modelRotationDegrees(rotation: ModelRotation): ModelTranslation 
 	const euler = new Euler().setFromQuaternion(toQuaternion(rotation), 'XYZ');
 	const toDegrees = (radians: number) => (radians * 180) / Math.PI;
 	return { x: toDegrees(euler.x), y: toDegrees(euler.y), z: toDegrees(euler.z) };
+}
+
+export function createRotationRingGeometry(): CylinderGeometry {
+	const radius = (ROTATION_RING_INNER_RADIUS + ROTATION_RING_OUTER_RADIUS) / 2;
+	const width = ROTATION_RING_OUTER_RADIUS - ROTATION_RING_INNER_RADIUS;
+	const geometry = new CylinderGeometry(radius, radius, width, ROTATION_RING_SEGMENTS, 1, true);
+	geometry.rotateX(Math.PI / 2);
+	return geometry;
 }
 
 export function transformModelBounds(
@@ -802,7 +814,7 @@ class BuildVolumeViewport {
 				side: DoubleSide,
 				transparent: true
 			});
-			const ring = new Mesh(new RingGeometry(0.972, 1, 96), material);
+			const ring = new Mesh(createRotationRingGeometry(), material);
 			const hitMaterial = new MeshBasicMaterial({
 				colorWrite: false,
 				depthWrite: false,
@@ -810,7 +822,7 @@ class BuildVolumeViewport {
 				side: DoubleSide,
 				transparent: true
 			});
-			const hitTarget = new Mesh(new RingGeometry(0.91, 1.06, 96), hitMaterial);
+			const hitTarget = new Mesh(new RingGeometry(0.91, 1.06, ROTATION_RING_SEGMENTS), hitMaterial);
 			hitTarget.userData.axis = axis;
 			ring.renderOrder = 11;
 			hitTarget.renderOrder = 11;

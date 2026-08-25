@@ -6,6 +6,7 @@ import type { ImportedStlModel } from './stl-importer';
 import {
 	createBuildVolumeClippingPlanes,
 	createMillimetreRulerVertices,
+	createRotationRingGeometry,
 	IDENTITY_MODEL_ROTATION,
 	isModelOutsideBuildVolume,
 	nudgeModelTranslation,
@@ -300,6 +301,20 @@ describe('translation arrow crossfade', () => {
 		expect(laterFirstWeight).toBeGreaterThan(0);
 		expect(laterFirstWeight).toBeLessThan(1);
 		expect(laterCrossedWeight).toBe(1);
+	});
+});
+
+describe('rotation ring geometry', () => {
+	it('uses an upright circular band instead of a flat annulus', () => {
+		const geometry = createRotationRingGeometry();
+		geometry.computeBoundingBox();
+		const bounds = geometry.boundingBox;
+
+		expect(bounds).not.toBeNull();
+		expect(bounds!.max.x - bounds!.min.x).toBeCloseTo(1.972);
+		expect(bounds!.max.y - bounds!.min.y).toBeCloseTo(1.972);
+		expect(bounds!.max.z - bounds!.min.z).toBeCloseTo(0.028);
+		expect(geometry.parameters.openEnded).toBe(true);
 	});
 });
 
