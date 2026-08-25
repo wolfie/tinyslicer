@@ -1,12 +1,19 @@
 <script lang="ts">
 	import { TINYMAKER_PROFILE } from '$lib/printer/tinymaker';
 	import {
+		areBoundsOutsideBuildVolume,
+		IDENTITY_MODEL_ROTATION,
+		ROTATION_SNAP_DEGREES,
 		initializeBuildVolume,
-		isModelOutsideBuildVolume,
+		modelRotationDegrees,
 		paintBuildVolume,
-		startModelTranslation,
-		stopModelTranslation,
-		updateModelTranslation,
+		startModelTransform,
+		stopModelTransform,
+		transformModelGeometryBounds,
+		translateModelBounds,
+		updateModelTransform,
+		type ModelInteraction,
+		type ModelRotation,
 		type ModelTranslation
 	} from '$lib/workspace/build-volume-renderer';
 	import { CanvasMetrics } from '$lib/workspace/canvas-metrics.svelte';
@@ -17,13 +24,30 @@
 	const canvasMetrics = new CanvasMetrics();
 	let model = $state.raw<ImportedStlModel | null>(null);
 	let modelTranslation = $state<ModelTranslation>({ x: 0, y: 0, z: 0 });
-	let modelDragging = $state(false);
+	let modelRotation = $state<ModelRotation>({ ...IDENTITY_MODEL_ROTATION });
+	let modelInteraction = $state<ModelInteraction | null>(null);
 	let importState = $state<'idle' | 'loading' | 'error'>('idle');
 	let importError = $state('');
 	let isDraggingFile = $state(false);
-	let modelOutsideBuildVolume = $derived(
-		model ? isModelOutsideBuildVolume(model, modelTranslation) : false
+	let rotatedModelBounds = $derived(
+		model ? transformModelGeometryBounds(model, { x: 0, y: 0, z: 0 }, modelRotation) : null
 	);
+	let transformedModelBounds = $derived(
+		rotatedModelBounds ? translateModelBounds(rotatedModelBounds, modelTranslation) : null
+	);
+	let modelOutsideBuildVolume = $derived(
+		transformedModelBounds ? areBoundsOutsideBuildVolume(transformedModelBounds) : false
+	);
+	let rotationDegrees = $derived(modelRotationDegrees(modelRotation));
+	let transformedDimensions = $derived.by(() => {
+		const bounds = rotatedModelBounds;
+		if (!bounds) return null;
+		return {
+			x: bounds.max.x - bounds.min.x,
+			y: bounds.max.y - bounds.min.y,
+			z: bounds.max.z - bounds.min.z
+		};
+	});
 	let dragDepth = 0;
 
 	function formatMillimetres(value: number): string {
@@ -33,6 +57,11 @@
 	function formatTranslation(value: number): string {
 		const rounded = Math.abs(value) < 0.005 ? 0 : value;
 		return `${rounded > 0 ? '+' : ''}${formatMillimetres(rounded)}`;
+	}
+
+	function formatDegrees(value: number): string {
+		const rounded = Math.abs(value) < 0.05 ? 0 : value;
+		return `${formatMillimetres(rounded)}°`;
 	}
 
 	function formatFileSize(byteLength: number): string {
@@ -46,6 +75,7 @@
 		try {
 			const importedModel = await importStlFile(file);
 			modelTranslation = { x: 0, y: 0, z: 0 };
+			modelRotation = { ...IDENTITY_MODEL_ROTATION };
 			model = importedModel;
 			importState = 'idle';
 		} catch (error) {
@@ -100,12 +130,23 @@
 		modelTranslation = translation;
 	}
 
+	function setModelRotation(rotation: ModelRotation) {
+		modelRotation = rotation;
+	}
+
 	function handlePointerDown(event: PointerEvent) {
 		if (
 			model &&
-			startModelTranslation(event, modelTranslation, setModelTranslation, (dragging) => {
-				modelDragging = dragging;
-			})
+			startModelTransform(
+				event,
+				modelTranslation,
+				modelRotation,
+				setModelTranslation,
+				setModelRotation,
+				(interaction) => {
+					modelInteraction = interaction;
+				}
+			)
 		) {
 			return;
 		}
@@ -113,12 +154,12 @@
 	}
 
 	function handlePointerMove(event: PointerEvent) {
-		if (updateModelTranslation(event)) return;
+		if (updateModelTransform(event)) return;
 		camera.update(event);
 	}
 
 	function handlePointerEnd(event: PointerEvent) {
-		if (stopModelTranslation(event)) return;
+		if (stopModelTransform(event)) return;
 		camera.stop(event);
 	}
 </script>
@@ -207,7 +248,16 @@
 				</div>
 				<div class="view-chip"><span></span> Perspective</div>
 			</div>
-			<div class={['viewport-canvas', { orbiting: camera.orbiting, translating: modelDragging }]}>
+			<div
+				class={[
+					'viewport-canvas',
+					{
+						orbiting: camera.orbiting,
+						translating: modelInteraction?.kind === 'translation',
+						rotating: modelInteraction?.kind === 'rotation'
+					}
+				]}
+			>
 				<canvas
 					{@attach canvasMetrics.observe}
 					{@attach initializeBuildVolume}
@@ -218,14 +268,15 @@
 						height: canvasMetrics.height,
 						dpr: canvasMetrics.dpr,
 						model,
-						modelTranslation
+						modelTranslation,
+						modelRotation
 					})}
 					onpointerdown={handlePointerDown}
 					onpointermove={handlePointerMove}
 					onpointerup={handlePointerEnd}
 					onpointercancel={handlePointerEnd}
 					onauxclick={(event) => event.preventDefault()}
-					aria-label={`Interactive 3D view of the ${TINYMAKER_PROFILE.buildVolume.x} by ${TINYMAKER_PROFILE.buildVolume.y} by ${TINYMAKER_PROFILE.buildVolume.z} millimetre ${TINYMAKER_PROFILE.name} build volume${model ? ` containing ${model.name}. Drag the model to move it on X and Y, Shift-drag it to move on Z, or click an arrow to nudge it` : ''}. Drag with the middle mouse button to orbit.`}
+					aria-label={`Interactive 3D view of the ${TINYMAKER_PROFILE.buildVolume.x} by ${TINYMAKER_PROFILE.buildVolume.y} by ${TINYMAKER_PROFILE.buildVolume.z} millimetre ${TINYMAKER_PROFILE.name} build volume${model ? ` containing ${model.name}. Drag the model to move it, click an arrow to nudge it, or drag a colored ring to rotate it in ${ROTATION_SNAP_DEGREES} degree steps. Hold Shift while dragging a ring for free rotation` : ''}. Drag with the middle mouse button to orbit.`}
 				></canvas>
 				<div class="axis-legend" aria-label="Axis directions">
 					<span class="axis-x"><i></i>X <small>{TINYMAKER_PROFILE.buildVolume.x} mm</small></span>
@@ -237,15 +288,17 @@
 						><circle cx="9" cy="9" r="7" /><path d="M9 8v4m0-7v.1" /></svg
 					>X/Y origin is the upper-left of the layer image · Z=0 is the build plate
 				</div>
-				<div class="orbit-hint" class:active={camera.orbiting || modelDragging}>
+				<div class="orbit-hint" class:active={camera.orbiting || modelInteraction !== null}>
 					<span class="mouse-icon" aria-hidden="true"><i></i></span><span
-						>{modelDragging
-							? 'Moving model'
-							: camera.orbiting
-								? 'Orbiting view'
-								: model
-									? 'Drag model · Shift-drag Z · Middle-drag orbit'
-									: 'Middle-drag to orbit'}</span
+						>{modelInteraction?.kind === 'rotation'
+							? `Rotating ${modelInteraction.axis.toUpperCase()} · ${ROTATION_SNAP_DEGREES}° snap · Hold Shift for free`
+							: modelInteraction?.kind === 'translation'
+								? 'Moving model'
+								: camera.orbiting
+									? 'Orbiting view'
+									: model
+										? `Drag rings to rotate · ${ROTATION_SNAP_DEGREES}° snap · Shift for free`
+										: 'Middle-drag to orbit'}</span
 					>
 				</div>
 				{#if modelOutsideBuildVolume}
@@ -279,13 +332,17 @@
 							{formatTranslation(modelTranslation.y)} · Z
 							{formatTranslation(modelTranslation.z)} mm
 						</div>
+						<div class="model-rotation">
+							<span></span>Rotation X {formatDegrees(rotationDegrees.x)} · Y
+							{formatDegrees(rotationDegrees.y)} · Z {formatDegrees(rotationDegrees.z)}
+						</div>
 						<dl class="model-details">
 							<div>
 								<dt>Dimensions</dt>
 								<dd>
-									{formatMillimetres(model.dimensions.x)} ×
-									{formatMillimetres(model.dimensions.y)} ×
-									{formatMillimetres(model.dimensions.z)} mm
+									{formatMillimetres(transformedDimensions?.x ?? model.dimensions.x)} ×
+									{formatMillimetres(transformedDimensions?.y ?? model.dimensions.y)} ×
+									{formatMillimetres(transformedDimensions?.z ?? model.dimensions.z)} mm
 								</dd>
 							</div>
 							<div>
@@ -663,7 +720,8 @@
 		touch-action: none;
 	}
 	.viewport-canvas.orbiting canvas,
-	.viewport-canvas.translating canvas {
+	.viewport-canvas.translating canvas,
+	.viewport-canvas.rotating canvas {
 		cursor: grabbing;
 	}
 	.axis-legend {
@@ -864,7 +922,8 @@
 	.model-state {
 		padding-top: 18px;
 	}
-	.model-position {
+	.model-position,
+	.model-rotation {
 		display: flex;
 		align-items: center;
 		gap: 7px;
@@ -876,12 +935,24 @@
 		font-size: 10px;
 		font-weight: 600;
 	}
-	.model-position span {
+	.model-rotation {
+		margin-top: 7px;
+		border-color: rgba(118, 105, 211, 0.28);
+		background: rgba(83, 67, 156, 0.11);
+		color: #b8acef;
+	}
+	.model-position span,
+	.model-rotation span {
 		width: 6px;
 		height: 6px;
+		flex: 0 0 auto;
 		border-radius: 50%;
 		background: #67c1f6;
 		box-shadow: 0 0 6px rgba(103, 193, 246, 0.75);
+	}
+	.model-rotation span {
+		background: #a99af1;
+		box-shadow: 0 0 6px rgba(169, 154, 241, 0.72);
 	}
 	.model-details {
 		display: grid;

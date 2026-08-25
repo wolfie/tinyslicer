@@ -1,6 +1,6 @@
 const ORBIT_SENSITIVITY = 0.007;
-const MIN_PITCH = -0.08;
-const MAX_PITCH = 1.35;
+const MIN_PITCH = -1.38;
+const MAX_PITCH = 1.45;
 
 export class OrbitCamera {
 	yaw = $state(-0.86);

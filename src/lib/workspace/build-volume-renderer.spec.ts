@@ -1,4 +1,4 @@
-import { Vector3 } from 'three';
+import { Quaternion, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 
 import { TINYMAKER_PROFILE } from '$lib/printer/tinymaker';
@@ -6,8 +6,13 @@ import type { ImportedStlModel } from './stl-importer';
 import {
 	createBuildVolumeClippingPlanes,
 	createMillimetreRulerVertices,
+	IDENTITY_MODEL_ROTATION,
 	isModelOutsideBuildVolume,
 	nudgeModelTranslation,
+	ROTATION_SNAP_DEGREES,
+	snapRotationAngle,
+	transformModelBounds,
+	transformModelGeometryBounds,
 	translateModelBounds
 } from './build-volume-renderer';
 
@@ -190,6 +195,67 @@ describe('build volume fit', () => {
 			max: { x: 14, y: 15, z: 16 }
 		});
 	});
+
+	it('recomputes the axis-aligned bounds after rotating around the model center', () => {
+		const quarterTurn = new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), Math.PI / 2);
+		const rotation = {
+			x: quarterTurn.x,
+			y: quarterTurn.y,
+			z: quarterTurn.z,
+			w: quarterTurn.w
+		};
+
+		const bounds = transformModelBounds(
+			{ min: { x: 10, y: 8, z: 0 }, max: { x: 12, y: 14, z: 4 } },
+			{ x: 3, y: -2, z: 1 },
+			rotation
+		);
+
+		expect(bounds.min.x).toBeCloseTo(11);
+		expect(bounds.max.x).toBeCloseTo(17);
+		expect(bounds.min.y).toBeCloseTo(8);
+		expect(bounds.max.y).toBeCloseTo(10);
+		expect(bounds.min.z).toBeCloseTo(1);
+		expect(bounds.max.z).toBeCloseTo(5);
+	});
+
+	it('uses the rotated bounds for build-volume feedback', () => {
+		const model = modelWithBounds({ x: 1, y: 13, z: 0 }, { x: 39, y: 17, z: 4 });
+		const quarterTurn = new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), Math.PI / 2);
+
+		expect(isModelOutsideBuildVolume(model, { x: 0, y: 0, z: 0 }, IDENTITY_MODEL_ROTATION)).toBe(
+			false
+		);
+		expect(isModelOutsideBuildVolume(model, { x: 0, y: 0, z: 0 }, quarterTurn)).toBe(true);
+	});
+
+	it('uses mesh vertices instead of empty bounding-box corners after rotation', () => {
+		const model = modelWithBounds({ x: -0.2, y: 10.3, z: 0 }, { x: 39.8, y: 20.3, z: 1 });
+		model.positions = new Float32Array([
+			-0.2, 10.3, 0, 39.8, 10.3, 0, -0.2, 20.3, 0, -0.2, 10.3, 1, 39.8, 10.3, 1, -0.2, 20.3, 1
+		]);
+		const eighthTurn = new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), Math.PI / 4);
+		const translation = { x: 0, y: 2.5, z: 0 };
+
+		expect(isModelOutsideBuildVolume(model)).toBe(true);
+		expect(transformModelBounds(model.bounds, translation, eighthTurn).max.y).toBeGreaterThan(
+			TINYMAKER_PROFILE.buildVolume.y
+		);
+		expect(transformModelGeometryBounds(model, translation, eighthTurn).max.y).toBeLessThan(
+			TINYMAKER_PROFILE.buildVolume.y
+		);
+		expect(isModelOutsideBuildVolume(model, translation, eighthTurn)).toBe(false);
+	});
+
+	it('ignores floating-point noise at a build-volume boundary', () => {
+		const model = modelWithBounds(
+			{ x: 0, y: 0, z: 0 },
+			{ x: TINYMAKER_PROFILE.buildVolume.x, y: 10, z: 10 }
+		);
+		model.positions = new Float32Array([0, 0, 0, TINYMAKER_PROFILE.buildVolume.x, 0, 0, 0, 10, 10]);
+
+		expect(isModelOutsideBuildVolume(model, { x: -Number.EPSILON, y: 0, z: 0 })).toBe(false);
+	});
 });
 
 describe('model translation nudges', () => {
@@ -200,5 +266,20 @@ describe('model translation nudges', () => {
 		expect(nudgeModelTranslation(origin, 'y', 1, true)).toEqual({ x: 2, y: 8, z: 4 });
 		expect(nudgeModelTranslation(origin, 'z', -1, true)).toEqual({ x: 2, y: 3, z: -1 });
 		expect(origin).toEqual({ x: 2, y: 3, z: 4 });
+	});
+});
+
+describe('model rotation snapping', () => {
+	it(`snaps to ${ROTATION_SNAP_DEGREES} degree increments by default`, () => {
+		const degrees = (value: number) => (value * Math.PI) / 180;
+
+		expect(snapRotationAngle(degrees(10))).toBeCloseTo(0);
+		expect(snapRotationAngle(degrees(12))).toBeCloseTo(degrees(ROTATION_SNAP_DEGREES));
+		expect(snapRotationAngle(degrees(-34))).toBeCloseTo(degrees(-2 * ROTATION_SNAP_DEGREES));
+	});
+
+	it('leaves the angle untouched while free rotation is enabled', () => {
+		const angle = Math.PI / 7;
+		expect(snapRotationAngle(angle, true)).toBe(angle);
 	});
 });

@@ -5,6 +5,7 @@ import {
 	CanvasTexture,
 	DirectionalLight,
 	DoubleSide,
+	Euler,
 	Float32BufferAttribute,
 	Group,
 	HemisphereLight,
@@ -18,7 +19,9 @@ import {
 	PerspectiveCamera,
 	Plane,
 	PlaneGeometry,
+	Quaternion,
 	Raycaster,
+	RingGeometry,
 	Scene,
 	SphereGeometry,
 	SRGBColorSpace,
@@ -32,6 +35,16 @@ import type { Bounds3, ImportedStlModel, Point3 } from '$lib/workspace/stl-impor
 
 export type ModelTranslation = Point3;
 
+export type ModelRotation = {
+	x: number;
+	y: number;
+	z: number;
+	w: number;
+};
+
+export type ModelInteraction =
+	{ kind: 'translation' } | { kind: 'rotation'; axis: keyof ModelTranslation };
+
 export type BuildVolumeRenderState = {
 	cameraYaw: number;
 	cameraPitch: number;
@@ -40,6 +53,7 @@ export type BuildVolumeRenderState = {
 	dpr: number;
 	model: ImportedStlModel | null;
 	modelTranslation: ModelTranslation;
+	modelRotation: ModelRotation;
 };
 
 const BUILD_VOLUME = TINYMAKER_PROFILE.buildVolume;
@@ -55,7 +69,13 @@ const ARROW_LENGTH = 10;
 const ARROW_WIDTH = 4.5;
 const SMALL_TRANSLATION_STEP = 1;
 const LARGE_TRANSLATION_STEP = 5;
+export const ROTATION_SNAP_DEGREES = 22.5;
+const ROTATION_SNAP_RADIANS = (ROTATION_SNAP_DEGREES * Math.PI) / 180;
+const ROTATION_RING_GAP = 2.5;
+const MIN_ROTATION_RING_RADIUS = 5;
+const BUILD_VOLUME_BOUNDS_EPSILON = 1e-6;
 const ZERO_TRANSLATION: ModelTranslation = { x: 0, y: 0, z: 0 };
+export const IDENTITY_MODEL_ROTATION: ModelRotation = { x: 0, y: 0, z: 0, w: 1 };
 
 type TranslationDirection = {
 	axis: keyof ModelTranslation;
@@ -71,15 +91,43 @@ type TranslationArrow = {
 	group: Group;
 };
 
-type ActiveModelDrag = {
+type RotationAxis = {
+	axis: keyof ModelTranslation;
+	vector: Vector3;
+	color: number;
+};
+
+type RotationRing = {
+	axis: RotationAxis;
+	group: Group;
+	material: MeshBasicMaterial;
+	hitTarget: Mesh<RingGeometry, MeshBasicMaterial>;
+};
+
+type ActiveTranslationDrag = {
+	kind: 'translation';
 	pointerId: number;
 	axis: 'xy' | 'z';
 	plane: Plane;
 	anchor: Vector3;
 	initialTranslation: ModelTranslation;
 	onChange: (translation: ModelTranslation) => void;
-	onDraggingChange: (dragging: boolean) => void;
+	onInteractionChange: (interaction: ModelInteraction | null) => void;
 };
+
+type ActiveRotationDrag = {
+	kind: 'rotation';
+	pointerId: number;
+	axis: RotationAxis;
+	initialRotation: Quaternion;
+	startPointer: Vector2;
+	screenTangent: Vector2;
+	pixelsPerRadian: number;
+	onChange: (rotation: ModelRotation) => void;
+	onInteractionChange: (interaction: ModelInteraction | null) => void;
+};
+
+type ActiveModelDrag = ActiveTranslationDrag | ActiveRotationDrag;
 
 const TRANSLATION_DIRECTIONS: TranslationDirection[] = [
 	{ axis: 'x', sign: 1, vector: new Vector3(1, 0, 0), color: 0xff777b },
@@ -88,6 +136,12 @@ const TRANSLATION_DIRECTIONS: TranslationDirection[] = [
 	{ axis: 'y', sign: -1, vector: new Vector3(0, -1, 0), color: 0x72e7ac },
 	{ axis: 'z', sign: 1, vector: new Vector3(0, 0, 1), color: 0x75bdff },
 	{ axis: 'z', sign: -1, vector: new Vector3(0, 0, -1), color: 0x75bdff }
+];
+
+const ROTATION_AXES: RotationAxis[] = [
+	{ axis: 'x', vector: new Vector3(1, 0, 0), color: 0xff777b },
+	{ axis: 'y', vector: new Vector3(0, 1, 0), color: 0x72e7ac },
+	{ axis: 'z', vector: new Vector3(0, 0, 1), color: 0x75bdff }
 ];
 
 type ClippedRegion = 'inside' | 'outside';
@@ -133,19 +187,112 @@ export function translateModelBounds(
 	};
 }
 
+function toQuaternion(rotation: ModelRotation): Quaternion {
+	return new Quaternion(rotation.x, rotation.y, rotation.z, rotation.w).normalize();
+}
+
+export function snapRotationAngle(angle: number, freeRotation = false): number {
+	return freeRotation ? angle : Math.round(angle / ROTATION_SNAP_RADIANS) * ROTATION_SNAP_RADIANS;
+}
+
+export function modelRotationDegrees(rotation: ModelRotation): ModelTranslation {
+	const euler = new Euler().setFromQuaternion(toQuaternion(rotation), 'XYZ');
+	const toDegrees = (radians: number) => (radians * 180) / Math.PI;
+	return { x: toDegrees(euler.x), y: toDegrees(euler.y), z: toDegrees(euler.z) };
+}
+
+export function transformModelBounds(
+	bounds: Bounds3,
+	translation: ModelTranslation = ZERO_TRANSLATION,
+	rotation: ModelRotation = IDENTITY_MODEL_ROTATION
+): Bounds3 {
+	const center = new Vector3(
+		(bounds.min.x + bounds.max.x) / 2,
+		(bounds.min.y + bounds.max.y) / 2,
+		(bounds.min.z + bounds.max.z) / 2
+	);
+	const quaternion = toQuaternion(rotation);
+	const transformedMin = new Vector3(Infinity, Infinity, Infinity);
+	const transformedMax = new Vector3(-Infinity, -Infinity, -Infinity);
+
+	for (const x of [bounds.min.x, bounds.max.x]) {
+		for (const y of [bounds.min.y, bounds.max.y]) {
+			for (const z of [bounds.min.z, bounds.max.z]) {
+				const corner = new Vector3(x, y, z)
+					.sub(center)
+					.applyQuaternion(quaternion)
+					.add(center)
+					.add(new Vector3(translation.x, translation.y, translation.z));
+				transformedMin.min(corner);
+				transformedMax.max(corner);
+			}
+		}
+	}
+
+	return {
+		min: { x: transformedMin.x, y: transformedMin.y, z: transformedMin.z },
+		max: { x: transformedMax.x, y: transformedMax.y, z: transformedMax.z }
+	};
+}
+
+export function transformModelGeometryBounds(
+	model: Pick<ImportedStlModel, 'bounds' | 'positions'>,
+	translation: ModelTranslation = ZERO_TRANSLATION,
+	rotation: ModelRotation = IDENTITY_MODEL_ROTATION
+): Bounds3 {
+	if (model.positions.length < 3) {
+		return transformModelBounds(model.bounds, translation, rotation);
+	}
+
+	const center = new Vector3(
+		(model.bounds.min.x + model.bounds.max.x) / 2,
+		(model.bounds.min.y + model.bounds.max.y) / 2,
+		(model.bounds.min.z + model.bounds.max.z) / 2
+	);
+	const quaternion = toQuaternion(rotation);
+	const transformedMin = new Vector3(Infinity, Infinity, Infinity);
+	const transformedMax = new Vector3(-Infinity, -Infinity, -Infinity);
+	const vertex = new Vector3();
+
+	for (let index = 0; index < model.positions.length; index += 3) {
+		vertex
+			.set(
+				model.positions[index] - center.x,
+				model.positions[index + 1] - center.y,
+				model.positions[index + 2] - center.z
+			)
+			.applyQuaternion(quaternion)
+			.add(center);
+		transformedMin.min(vertex);
+		transformedMax.max(vertex);
+	}
+
+	return translateModelBounds(
+		{
+			min: { x: transformedMin.x, y: transformedMin.y, z: transformedMin.z },
+			max: { x: transformedMax.x, y: transformedMax.y, z: transformedMax.z }
+		},
+		translation
+	);
+}
+
+export function areBoundsOutsideBuildVolume(bounds: Bounds3): boolean {
+	return (
+		bounds.min.x < -BUILD_VOLUME_BOUNDS_EPSILON ||
+		bounds.max.x > BUILD_VOLUME.x + BUILD_VOLUME_BOUNDS_EPSILON ||
+		bounds.min.y < -BUILD_VOLUME_BOUNDS_EPSILON ||
+		bounds.max.y > BUILD_VOLUME.y + BUILD_VOLUME_BOUNDS_EPSILON ||
+		bounds.min.z < -BUILD_VOLUME_BOUNDS_EPSILON ||
+		bounds.max.z > BUILD_VOLUME.z + BUILD_VOLUME_BOUNDS_EPSILON
+	);
+}
+
 export function isModelOutsideBuildVolume(
 	model: ImportedStlModel,
-	translation: ModelTranslation = ZERO_TRANSLATION
+	translation: ModelTranslation = ZERO_TRANSLATION,
+	rotation: ModelRotation = IDENTITY_MODEL_ROTATION
 ): boolean {
-	const bounds = translateModelBounds(model.bounds, translation);
-	return (
-		bounds.min.x < 0 ||
-		bounds.max.x > BUILD_VOLUME.x ||
-		bounds.min.y < 0 ||
-		bounds.max.y > BUILD_VOLUME.y ||
-		bounds.min.z < 0 ||
-		bounds.max.z > BUILD_VOLUME.z
-	);
+	return areBoundsOutsideBuildVolume(transformModelGeometryBounds(model, translation, rotation));
 }
 
 export function createMillimetreRulerVertices(
@@ -205,8 +352,13 @@ class BuildVolumeViewport {
 	#translationArrowHitTargets: TranslationArrowPlane[] = [];
 	#arrowGeometry = new PlaneGeometry(ARROW_LENGTH, ARROW_WIDTH);
 	#arrowTexture: CanvasTexture;
+	#rotationRings: RotationRing[] = [];
+	#rotationRingHitTargets: Mesh<RingGeometry, MeshBasicMaterial>[] = [];
 	#currentModel: ImportedStlModel | null = null;
 	#currentTranslation: ModelTranslation = ZERO_TRANSLATION;
+	#currentRotation: ModelRotation = IDENTITY_MODEL_ROTATION;
+	#modelCenter = new Vector3();
+	#rotationRingRadius = MIN_ROTATION_RING_RADIUS;
 	#activeModelDrag: ActiveModelDrag | null = null;
 	#pendingState: BuildVolumeRenderState | null = null;
 	#animationFrame: number | null = null;
@@ -229,6 +381,7 @@ class BuildVolumeViewport {
 		this.#scene.add(this.#createBuildVolume());
 		this.#arrowTexture = this.#createArrowTexture();
 		this.#createTranslationArrows();
+		this.#createRotationRings();
 		this.#scene.add(new HemisphereLight(0xddeeff, 0x152536, 1.65));
 
 		const keyLight = new DirectionalLight(0xffffff, 2.15);
@@ -243,18 +396,34 @@ class BuildVolumeViewport {
 	startModelInteraction(
 		event: PointerEvent,
 		translation: ModelTranslation,
-		onChange: (translation: ModelTranslation) => void,
-		onDraggingChange: (dragging: boolean) => void
+		rotation: ModelRotation,
+		onTranslationChange: (translation: ModelTranslation) => void,
+		onRotationChange: (rotation: ModelRotation) => void,
+		onInteractionChange: (interaction: ModelInteraction | null) => void
 	): boolean {
 		if (event.button !== 0 || !this.#modelMesh) return false;
 		this.#setPointer(event);
+
+		const ringHit = this.#raycaster.intersectObjects(this.#rotationRingHitTargets, false)[0];
+		if (ringHit) {
+			const hitTarget = ringHit.object as Mesh<RingGeometry, MeshBasicMaterial>;
+			const axis = hitTarget.userData.axis as RotationAxis;
+			return this.#startRotationDrag(
+				event,
+				ringHit.point,
+				axis,
+				rotation,
+				onRotationChange,
+				onInteractionChange
+			);
+		}
 
 		const arrowHit = this.#raycaster.intersectObjects(this.#translationArrowHitTargets, false)[0];
 		if (arrowHit) {
 			event.preventDefault();
 			const arrow = arrowHit.object as TranslationArrowPlane;
 			const { axis, sign } = arrow.userData.direction as TranslationDirection;
-			onChange(nudgeModelTranslation(translation, axis, sign, event.shiftKey));
+			onTranslationChange(nudgeModelTranslation(translation, axis, sign, event.shiftKey));
 			return true;
 		}
 
@@ -278,21 +447,35 @@ class BuildVolumeViewport {
 		event.preventDefault();
 		this.#canvas.setPointerCapture(event.pointerId);
 		this.#activeModelDrag = {
+			kind: 'translation',
 			pointerId: event.pointerId,
 			axis,
 			plane,
 			anchor,
 			initialTranslation: { ...translation },
-			onChange,
-			onDraggingChange
+			onChange: onTranslationChange,
+			onInteractionChange
 		};
-		onDraggingChange(true);
+		onInteractionChange({ kind: 'translation' });
 		return true;
 	}
 
 	updateModelInteraction(event: PointerEvent): boolean {
 		const drag = this.#activeModelDrag;
 		if (!drag || drag.pointerId !== event.pointerId) return false;
+		if (drag.kind === 'rotation') {
+			const pointerDelta = new Vector2(
+				event.clientX - drag.startPointer.x,
+				event.clientY - drag.startPointer.y
+			);
+			const rawAngle = pointerDelta.dot(drag.screenTangent) / drag.pixelsPerRadian;
+			const angle = snapRotationAngle(rawAngle, event.shiftKey);
+			const deltaRotation = new Quaternion().setFromAxisAngle(drag.axis.vector, angle);
+			const rotation = deltaRotation.multiply(drag.initialRotation).normalize();
+			drag.onChange({ x: rotation.x, y: rotation.y, z: rotation.z, w: rotation.w });
+			return true;
+		}
+
 		this.#setPointer(event);
 		const point = this.#raycaster.ray.intersectPlane(drag.plane, new Vector3());
 		if (!point) return true;
@@ -321,7 +504,50 @@ class BuildVolumeViewport {
 			this.#canvas.releasePointerCapture(event.pointerId);
 		}
 		this.#activeModelDrag = null;
-		drag.onDraggingChange(false);
+		drag.onInteractionChange(null);
+		return true;
+	}
+
+	#startRotationDrag(
+		event: PointerEvent,
+		hitPoint: Vector3,
+		axis: RotationAxis,
+		rotation: ModelRotation,
+		onChange: (rotation: ModelRotation) => void,
+		onInteractionChange: (interaction: ModelInteraction | null) => void
+	): boolean {
+		const center = this.#modelCenter
+			.clone()
+			.add(
+				new Vector3(
+					this.#currentTranslation.x,
+					this.#currentTranslation.y,
+					this.#currentTranslation.z
+				)
+			);
+		const radial = hitPoint.clone().sub(center).normalize();
+		const tangent = axis.vector.clone().cross(radial).normalize();
+		const centerOnScreen = this.#worldToScreen(center);
+		const tangentOnScreen = this.#worldToScreen(
+			center.clone().addScaledVector(tangent, this.#rotationRingRadius)
+		).sub(centerOnScreen);
+		const pixelsPerRadian = tangentOnScreen.length();
+		if (pixelsPerRadian < 4) return false;
+
+		event.preventDefault();
+		this.#canvas.setPointerCapture(event.pointerId);
+		this.#activeModelDrag = {
+			kind: 'rotation',
+			pointerId: event.pointerId,
+			axis,
+			initialRotation: toQuaternion(rotation),
+			startPointer: new Vector2(event.clientX, event.clientY),
+			screenTangent: tangentOnScreen.normalize(),
+			pixelsPerRadian,
+			onChange,
+			onInteractionChange
+		};
+		onInteractionChange({ kind: 'rotation', axis: axis.axis });
 		return true;
 	}
 
@@ -361,7 +587,7 @@ class BuildVolumeViewport {
 		if (state.width <= 0 || state.height <= 0) return;
 		this.#resize(state.width, state.height, state.dpr);
 		this.#setModel(state.model);
-		this.#setModelTranslation(state.modelTranslation);
+		this.#setModelTransform(state.modelTranslation, state.modelRotation);
 
 		this.#camera.position.set(
 			CAMERA_TARGET.x + CAMERA_DISTANCE * Math.cos(state.cameraPitch) * Math.cos(state.cameraYaw),
@@ -370,6 +596,7 @@ class BuildVolumeViewport {
 		);
 		this.#camera.lookAt(CAMERA_TARGET);
 		this.#updateTranslationArrows();
+		this.#updateRotationRings();
 		this.#renderer.render(this.#scene, this.#camera);
 	}
 
@@ -399,12 +626,28 @@ class BuildVolumeViewport {
 		}
 		if (!model) {
 			for (const arrow of this.#translationArrows) arrow.group.visible = false;
+			for (const ring of this.#rotationRings) ring.group.visible = false;
 			return;
 		}
 
+		this.#modelCenter.set(
+			(model.bounds.min.x + model.bounds.max.x) / 2,
+			(model.bounds.min.y + model.bounds.max.y) / 2,
+			(model.bounds.min.z + model.bounds.max.z) / 2
+		);
+		const halfDimensions = new Vector3(
+			(model.bounds.max.x - model.bounds.min.x) / 2,
+			(model.bounds.max.y - model.bounds.min.y) / 2,
+			(model.bounds.max.z - model.bounds.min.z) / 2
+		);
+		this.#rotationRingRadius = Math.max(
+			MIN_ROTATION_RING_RADIUS,
+			halfDimensions.length() + ROTATION_RING_GAP
+		);
 		const geometry = new BufferGeometry();
-		geometry.setAttribute('position', new BufferAttribute(model.positions, 3));
+		geometry.setAttribute('position', new BufferAttribute(model.positions.slice(), 3));
 		geometry.setAttribute('normal', new BufferAttribute(model.normals, 3));
+		geometry.translate(-this.#modelCenter.x, -this.#modelCenter.y, -this.#modelCenter.z);
 		geometry.computeBoundingSphere();
 		this.#modelMesh = new Mesh(geometry, this.#modelMaterial);
 		this.#modelMesh.renderOrder = 1;
@@ -414,11 +657,20 @@ class BuildVolumeViewport {
 		this.#scene.add(this.#outsideModelMesh);
 	}
 
-	#setModelTranslation(translation: ModelTranslation) {
+	#setModelTransform(translation: ModelTranslation, rotation: ModelRotation) {
 		this.#currentTranslation = translation;
-		if (this.#modelMesh) this.#modelMesh.position.set(translation.x, translation.y, translation.z);
+		this.#currentRotation = rotation;
+		const quaternion = toQuaternion(rotation);
+		const position = this.#modelCenter
+			.clone()
+			.add(new Vector3(translation.x, translation.y, translation.z));
+		if (this.#modelMesh) {
+			this.#modelMesh.position.copy(position);
+			this.#modelMesh.quaternion.copy(quaternion);
+		}
 		if (this.#outsideModelMesh) {
-			this.#outsideModelMesh.position.set(translation.x, translation.y, translation.z);
+			this.#outsideModelMesh.position.copy(position);
+			this.#outsideModelMesh.quaternion.copy(quaternion);
 		}
 	}
 
@@ -431,6 +683,14 @@ class BuildVolumeViewport {
 		this.#raycaster.setFromCamera(this.#pointer, this.#camera);
 	}
 
+	#worldToScreen(point: Vector3): Vector2 {
+		const projected = point.clone().project(this.#camera);
+		return new Vector2(
+			((projected.x + 1) * this.#width) / 2,
+			((-projected.y + 1) * this.#height) / 2
+		);
+	}
+
 	#cancelModelDrag() {
 		const drag = this.#activeModelDrag;
 		if (!drag) return;
@@ -438,7 +698,7 @@ class BuildVolumeViewport {
 			this.#canvas.releasePointerCapture(drag.pointerId);
 		}
 		this.#activeModelDrag = null;
-		drag.onDraggingChange(false);
+		drag.onInteractionChange(null);
 	}
 
 	#createArrowTexture(): CanvasTexture {
@@ -498,9 +758,46 @@ class BuildVolumeViewport {
 		}
 	}
 
+	#createRotationRings() {
+		for (const axis of ROTATION_AXES) {
+			const material = new MeshBasicMaterial({
+				color: axis.color,
+				depthTest: false,
+				depthWrite: false,
+				opacity: 0.76,
+				side: DoubleSide,
+				transparent: true
+			});
+			const ring = new Mesh(new RingGeometry(0.972, 1, 96), material);
+			const hitMaterial = new MeshBasicMaterial({
+				colorWrite: false,
+				depthWrite: false,
+				opacity: 0,
+				side: DoubleSide,
+				transparent: true
+			});
+			const hitTarget = new Mesh(new RingGeometry(0.91, 1.06, 96), hitMaterial);
+			hitTarget.userData.axis = axis;
+			ring.renderOrder = 11;
+			hitTarget.renderOrder = 11;
+
+			const group = new Group();
+			group.add(ring, hitTarget);
+			group.quaternion.setFromUnitVectors(new Vector3(0, 0, 1), axis.vector);
+			group.visible = false;
+			this.#rotationRings.push({ axis, group, material, hitTarget });
+			this.#rotationRingHitTargets.push(hitTarget);
+			this.#scene.add(group);
+		}
+	}
+
 	#updateTranslationArrows() {
 		if (!this.#currentModel) return;
-		const bounds = translateModelBounds(this.#currentModel.bounds, this.#currentTranslation);
+		const bounds = transformModelBounds(
+			this.#currentModel.bounds,
+			this.#currentTranslation,
+			this.#currentRotation
+		);
 		const center = new Vector3(
 			(bounds.min.x + bounds.max.x) / 2,
 			(bounds.min.y + bounds.max.y) / 2,
@@ -520,6 +817,29 @@ class BuildVolumeViewport {
 				Math.abs(direction.z) * halfDimensions.z;
 			arrow.group.position.copy(center).addScaledVector(direction, extent + ARROW_OUTSET);
 			arrow.group.visible = true;
+		}
+	}
+
+	#updateRotationRings() {
+		if (!this.#currentModel) return;
+		const center = this.#modelCenter
+			.clone()
+			.add(
+				new Vector3(
+					this.#currentTranslation.x,
+					this.#currentTranslation.y,
+					this.#currentTranslation.z
+				)
+			);
+		for (const ring of this.#rotationRings) {
+			ring.group.position.copy(center);
+			ring.group.scale.setScalar(this.#rotationRingRadius);
+			ring.group.visible = true;
+			ring.material.opacity =
+				this.#activeModelDrag?.kind === 'rotation' &&
+				this.#activeModelDrag.axis.axis === ring.axis.axis
+					? 1
+					: 0.4;
 		}
 	}
 
@@ -651,24 +971,28 @@ export function paintBuildVolume(state: BuildVolumeRenderState) {
 	return (canvas: HTMLCanvasElement) => getViewport(canvas).schedule(state);
 }
 
-export function startModelTranslation(
+export function startModelTransform(
 	event: PointerEvent,
 	translation: ModelTranslation,
-	onChange: (translation: ModelTranslation) => void,
-	onDraggingChange: (dragging: boolean) => void
+	rotation: ModelRotation,
+	onTranslationChange: (translation: ModelTranslation) => void,
+	onRotationChange: (rotation: ModelRotation) => void,
+	onInteractionChange: (interaction: ModelInteraction | null) => void
 ): boolean {
 	return getViewport(event.currentTarget as HTMLCanvasElement).startModelInteraction(
 		event,
 		translation,
-		onChange,
-		onDraggingChange
+		rotation,
+		onTranslationChange,
+		onRotationChange,
+		onInteractionChange
 	);
 }
 
-export function updateModelTranslation(event: PointerEvent): boolean {
+export function updateModelTransform(event: PointerEvent): boolean {
 	return getViewport(event.currentTarget as HTMLCanvasElement).updateModelInteraction(event);
 }
 
-export function stopModelTranslation(event: PointerEvent): boolean {
+export function stopModelTransform(event: PointerEvent): boolean {
 	return getViewport(event.currentTarget as HTMLCanvasElement).stopModelInteraction(event);
 }
