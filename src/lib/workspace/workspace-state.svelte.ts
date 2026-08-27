@@ -3,11 +3,13 @@ import {
 	IDENTITY_MODEL_ROTATION,
 	modelRotationDegrees,
 	transformModelGeometryBounds,
-	translateModelBounds,
-	type BuildVolumeInteractionMode,
-	type ModelRotation,
-	type ModelTranslation
-} from './build-volume-renderer';
+	translateModelBounds
+} from './build-volume-renderer/model-transform';
+import type {
+	BuildVolumeInteractionMode,
+	ModelRotation,
+	ModelTranslation
+} from './build-volume-renderer/types';
 import type { ImportedStlModel } from './stl-importer';
 import { generateSupportPlan, type ModelSurfaceHit, type SupportPoint } from './supports';
 
