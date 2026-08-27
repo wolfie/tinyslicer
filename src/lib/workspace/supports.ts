@@ -17,6 +17,7 @@ const SUPPORT_GEOMETRY_EPSILON_MM = 1e-6;
 export type ModelSurfaceHit = {
 	position: Point3;
 	normal: Point3;
+	lowerContactPosition?: Point3;
 };
 
 export type SupportPoint = ModelSurfaceHit & {
@@ -86,13 +87,64 @@ export function supportNeckDirection(normal: Point3): Point3 {
 	};
 }
 
-export function createPostSupportStructure(point: SupportPoint): SupportStructure | null {
+export function supportNeckBase(point: ModelSurfaceHit): Point3 {
 	const neckDirection = supportNeckDirection(point.normal);
-	const neckBase = {
+	return {
 		x: point.position.x + neckDirection.x * SUPPORT_NECK_LENGTH_MM,
 		y: point.position.y + neckDirection.y * SUPPORT_NECK_LENGTH_MM,
 		z: point.position.z + neckDirection.z * SUPPORT_NECK_LENGTH_MM
 	};
+}
+
+export function createPostSupportStructure(point: SupportPoint): SupportStructure | null {
+	const neckBase = supportNeckBase(point);
+
+	if (point.lowerContactPosition) {
+		const lowerNeckBase = {
+			x: point.lowerContactPosition.x,
+			y: point.lowerContactPosition.y,
+			z: point.lowerContactPosition.z + SUPPORT_NECK_LENGTH_MM
+		};
+		if (lowerNeckBase.z >= neckBase.z - SUPPORT_GEOMETRY_EPSILON_MM) return null;
+
+		return {
+			id: `post:${point.id}`,
+			pointIds: [point.id],
+			parts: [
+				{
+					kind: 'neck',
+					start: { ...point.lowerContactPosition },
+					end: lowerNeckBase,
+					startDiameter: SUPPORT_CONTACT_DIAMETER_MM,
+					endDiameter: SUPPORT_NECK_DIAMETER_MM
+				},
+				{
+					kind: 'junction',
+					center: { ...lowerNeckBase },
+					diameter: SUPPORT_JUNCTION_DIAMETER_MM
+				},
+				{
+					kind: 'shaft',
+					start: { ...lowerNeckBase },
+					end: { ...neckBase },
+					startDiameter: SUPPORT_SHAFT_DIAMETER_MM,
+					endDiameter: SUPPORT_SHAFT_DIAMETER_MM
+				},
+				{
+					kind: 'junction',
+					center: { ...neckBase },
+					diameter: SUPPORT_JUNCTION_DIAMETER_MM
+				},
+				{
+					kind: 'neck',
+					start: { ...neckBase },
+					end: { ...point.position },
+					startDiameter: SUPPORT_NECK_DIAMETER_MM,
+					endDiameter: SUPPORT_CONTACT_DIAMETER_MM
+				}
+			]
+		};
+	}
 
 	if (neckBase.z <= SUPPORT_FOOT_HEIGHT_MM + SUPPORT_GEOMETRY_EPSILON_MM) return null;
 

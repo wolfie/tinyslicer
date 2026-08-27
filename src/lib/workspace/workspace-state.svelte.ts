@@ -101,7 +101,10 @@ export class WorkspaceState {
 			{
 				id: `support-point-${this.#nextSupportPointId++}`,
 				position: { ...hit.position },
-				normal: { ...hit.normal }
+				normal: { ...hit.normal },
+				...(hit.lowerContactPosition
+					? { lowerContactPosition: { ...hit.lowerContactPosition } }
+					: {})
 			}
 		];
 		return true;

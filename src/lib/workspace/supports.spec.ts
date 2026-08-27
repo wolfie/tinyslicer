@@ -7,6 +7,8 @@ import {
 	SUPPORT_FOOT_HEIGHT_MM,
 	SUPPORT_JUNCTION_DIAMETER_MM,
 	SUPPORT_MAX_NECK_ANGLE_DEGREES,
+	SUPPORT_CONTACT_DIAMETER_MM,
+	SUPPORT_NECK_DIAMETER_MM,
 	SUPPORT_NECK_LENGTH_MM,
 	supportNeckDirection
 } from './supports';
@@ -39,6 +41,42 @@ describe('support post layout', () => {
 			diameter: SUPPORT_JUNCTION_DIAMETER_MM
 		});
 		expect(neck).toMatchObject({
+			kind: 'neck',
+			start: shaft && 'end' in shaft ? shaft.end : undefined,
+			end: { x: 12, y: 14, z: 10 }
+		});
+	});
+
+	it('ends on a lower model surface with an inverted tapered contact', () => {
+		const structure = createPostSupportStructure({
+			id: 'support-point-1',
+			position: { x: 12, y: 14, z: 10 },
+			normal: { x: 0, y: 0, z: -1 },
+			lowerContactPosition: { x: 12, y: 14, z: 3 }
+		});
+		const [lowerNeck, lowerJunction, shaft, upperJunction, upperNeck] = structure?.parts ?? [];
+
+		expect(lowerNeck).toEqual({
+			kind: 'neck',
+			start: { x: 12, y: 14, z: 3 },
+			end: { x: 12, y: 14, z: 3 + SUPPORT_NECK_LENGTH_MM },
+			startDiameter: SUPPORT_CONTACT_DIAMETER_MM,
+			endDiameter: SUPPORT_NECK_DIAMETER_MM
+		});
+		expect(lowerJunction).toMatchObject({
+			kind: 'junction',
+			center: lowerNeck && 'end' in lowerNeck ? lowerNeck.end : undefined
+		});
+		expect(shaft).toMatchObject({
+			kind: 'shaft',
+			start: lowerNeck && 'end' in lowerNeck ? lowerNeck.end : undefined,
+			end: { x: 12, y: 14, z: 10 - SUPPORT_NECK_LENGTH_MM }
+		});
+		expect(upperJunction).toMatchObject({
+			kind: 'junction',
+			center: shaft && 'end' in shaft ? shaft.end : undefined
+		});
+		expect(upperNeck).toMatchObject({
 			kind: 'neck',
 			start: shaft && 'end' in shaft ? shaft.end : undefined,
 			end: { x: 12, y: 14, z: 10 }

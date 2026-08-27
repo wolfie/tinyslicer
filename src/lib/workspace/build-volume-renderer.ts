@@ -34,6 +34,7 @@ import {
 import { TINYMAKER_PROFILE } from '$lib/printer/tinymaker';
 import type { Bounds3, ImportedStlModel, Point3 } from '$lib/workspace/stl-importer';
 import {
+	supportNeckBase,
 	type ModelSurfaceHit,
 	type SupportStructure,
 	type SupportStructurePart
@@ -91,6 +92,7 @@ const ROTATION_RING_INNER_RADIUS = 0.972;
 const ROTATION_RING_OUTER_RADIUS = 1;
 const ROTATION_RING_SEGMENTS = 96;
 const BUILD_VOLUME_BOUNDS_EPSILON = 1e-6;
+const SUPPORT_RAY_ORIGIN_OFFSET_MM = 1e-4;
 const ZERO_TRANSLATION: ModelTranslation = { x: 0, y: 0, z: 0 };
 const CYLINDER_AXIS = new Vector3(0, 1, 0);
 export const IDENTITY_MODEL_ROTATION: ModelRotation = { x: 0, y: 0, z: 0, w: 1 };
@@ -386,6 +388,21 @@ export function createMillimetreRulerVertices(
 	return vertices;
 }
 
+export function findModelSurfaceBelow(modelMesh: Mesh, origin: Point3): Point3 | null {
+	if (origin.z <= SUPPORT_RAY_ORIGIN_OFFSET_MM) return null;
+
+	modelMesh.updateWorldMatrix(true, false);
+	const rayOrigin = new Vector3(origin.x, origin.y, origin.z - SUPPORT_RAY_ORIGIN_OFFSET_MM);
+	const raycaster = new Raycaster(
+		rayOrigin,
+		new Vector3(0, 0, -1),
+		0,
+		rayOrigin.z + SUPPORT_RAY_ORIGIN_OFFSET_MM
+	);
+	const hit = raycaster.intersectObject(modelMesh, false)[0];
+	return hit ? { x: hit.point.x, y: hit.point.y, z: hit.point.z } : null;
+}
+
 class BuildVolumeViewport {
 	#canvas: HTMLCanvasElement;
 	#renderer: WebGLRenderer;
@@ -551,10 +568,15 @@ class BuildVolumeViewport {
 
 		const normal = hit.face?.normal.clone() ?? new Vector3(0, 0, 1);
 		normal.transformDirection(this.#modelMesh.matrixWorld).normalize();
-		return {
+		const surfaceHit: ModelSurfaceHit = {
 			position: { x: hit.point.x, y: hit.point.y, z: hit.point.z },
 			normal: { x: normal.x, y: normal.y, z: normal.z }
 		};
+		const lowerContactPosition = findModelSurfaceBelow(
+			this.#modelMesh,
+			supportNeckBase(surfaceHit)
+		);
+		return lowerContactPosition ? { ...surfaceHit, lowerContactPosition } : surfaceHit;
 	}
 
 	updateModelInteraction(event: PointerEvent): boolean {

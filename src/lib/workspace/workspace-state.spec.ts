@@ -51,17 +51,20 @@ describe('workspace workflow', () => {
 		workspace.requestStep('supports');
 		const hit = {
 			position: { x: 12, y: 14, z: 5 },
-			normal: { x: 0, y: 0, z: 1 }
+			normal: { x: 0, y: 0, z: 1 },
+			lowerContactPosition: { x: 12, y: 14, z: 2 }
 		};
 
 		expect(workspace.addSupportPoint(hit)).toBe(true);
 		hit.position.x = 99;
+		hit.lowerContactPosition.x = 99;
 
 		expect(workspace.supportPoints).toEqual([
 			{
 				id: 'support-point-1',
 				position: { x: 12, y: 14, z: 5 },
-				normal: { x: 0, y: 0, z: 1 }
+				normal: { x: 0, y: 0, z: 1 },
+				lowerContactPosition: { x: 12, y: 14, z: 2 }
 			}
 		]);
 	});
