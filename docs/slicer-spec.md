@@ -15,13 +15,14 @@ The MVP must support:
 - Translating and rotating the model on all three axes.
 - Scaling the model uniformly, preserving its proportions.
 - Manually adding and removing simple post-style supports.
+- Generating a conservative initial set of editable support suggestions for human review.
 - Previewing individual sliced layers.
 - Slicing the complete printable scene at a fixed 0.05 mm Z interval.
 - Exporting numbered PNG layers and a compatible `run.gcode` file as a ZIP archive.
 
 The following are outside the initial scope:
 
-- Automatic orientation or automatic supports.
+- Automatic orientation or unattended/validated automatic supports.
 - Hollowing, infill, drainage holes, and resin traps analysis.
 - Mesh repair beyond reporting obvious invalid geometry.
 - Multiple independently transformable models.
