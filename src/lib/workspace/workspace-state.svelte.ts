@@ -11,7 +11,12 @@ import type {
 	ModelTranslation
 } from './build-volume-renderer/types';
 import type { ImportedStlModel } from './stl-importer';
-import { generateSupportPlan, type ModelSurfaceHit, type SupportPoint } from './supports';
+import {
+	doesModelProjectionOverlapSupportMargin,
+	generateSupportPlan,
+	type ModelSurfaceHit,
+	type SupportPoint
+} from './supports';
 
 export type WorkflowStep = 'prepare' | 'supports' | 'preview' | 'export';
 
@@ -36,6 +41,11 @@ export class WorkspaceState {
 	);
 	modelOutsideBuildVolume = $derived(
 		this.transformedModelBounds ? areBoundsOutsideBuildVolume(this.transformedModelBounds) : false
+	);
+	modelOverlapsSupportMargin = $derived(
+		this.transformedModelBounds && !this.modelOutsideBuildVolume
+			? doesModelProjectionOverlapSupportMargin(this.transformedModelBounds)
+			: false
 	);
 	canEnterSupports = $derived(this.model !== null && !this.modelOutsideBuildVolume);
 	rotationDegrees = $derived(modelRotationDegrees(this.modelRotation));

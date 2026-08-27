@@ -133,6 +133,7 @@
 			modelRotation={workspace.modelRotation}
 			transformedModelBounds={workspace.transformedModelBounds}
 			modelOutsideBuildVolume={workspace.modelOutsideBuildVolume}
+			modelOverlapsSupportMargin={workspace.modelOverlapsSupportMargin}
 			canEnterSupports={workspace.canEnterSupports}
 			interactionMode={workspace.interactionMode}
 			supportPointCount={workspace.supportPoints.length}

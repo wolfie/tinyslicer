@@ -32,6 +32,24 @@ describe('workspace workflow', () => {
 		expect(workspace.requestStep('supports')).toBe(false);
 	});
 
+	it('warns when an in-volume model projection overlaps the support margin', () => {
+		const workspace = new WorkspaceState();
+		workspace.setModel(modelWithinBuildVolume());
+
+		expect(workspace.modelOverlapsSupportMargin).toBe(false);
+
+		workspace.setModelTranslation({ x: -7, y: 0, z: 0 });
+
+		expect(workspace.modelOutsideBuildVolume).toBe(false);
+		expect(workspace.modelOverlapsSupportMargin).toBe(true);
+		expect(workspace.canEnterSupports).toBe(true);
+
+		workspace.setModelTranslation({ x: -11, y: 0, z: 0 });
+
+		expect(workspace.modelOutsideBuildVolume).toBe(true);
+		expect(workspace.modelOverlapsSupportMargin).toBe(false);
+	});
+
 	it('locks model transforms while placing supports', () => {
 		const workspace = new WorkspaceState();
 		workspace.setModel(modelWithinBuildVolume());

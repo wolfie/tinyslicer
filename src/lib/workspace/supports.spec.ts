@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	createPostSupportStructure,
 	generateSupportPlan,
+	isSupportFootInsideBuildPlate,
 	SUPPORT_FOOT_DIAMETER_MM,
 	SUPPORT_FOOT_HEIGHT_MM,
 	SUPPORT_JUNCTION_DIAMETER_MM,
@@ -10,6 +11,7 @@ import {
 	SUPPORT_CONTACT_DIAMETER_MM,
 	SUPPORT_NECK_DIAMETER_MM,
 	SUPPORT_NECK_LENGTH_MM,
+	SUPPORT_PLATE_EDGE_MARGIN_MM,
 	supportNeckDirection
 } from './supports';
 
@@ -115,6 +117,63 @@ describe('support post layout', () => {
 				}
 			]
 		});
+	});
+
+	it('uses a conservative edge margin covering the foot and maximum neck displacement', () => {
+		expect(SUPPORT_PLATE_EDGE_MARGIN_MM).toBeCloseTo(
+			SUPPORT_FOOT_DIAMETER_MM / 2 + SUPPORT_NECK_LENGTH_MM * Math.sin(Math.PI / 4)
+		);
+	});
+
+	it('rejects a plate support when any part of its foot would cross the build-plate edge', () => {
+		const point = {
+			id: 'support-point-1',
+			position: { x: 1, y: 14, z: 10 },
+			normal: { x: 0, y: 0, z: -1 }
+		};
+
+		expect(isSupportFootInsideBuildPlate(point)).toBe(false);
+		expect(createPostSupportStructure(point)).toBeNull();
+		expect(generateSupportPlan([point])).toEqual({
+			structures: [],
+			unresolvedPoints: [{ pointId: point.id, reason: 'outside-build-plate' }]
+		});
+	});
+
+	it('accounts for lateral neck displacement when checking the support foot', () => {
+		const point = {
+			id: 'support-point-1',
+			position: { x: 2.5, y: 14, z: 10 },
+			normal: { x: -1, y: 0, z: 0 }
+		};
+
+		expect(isSupportFootInsideBuildPlate(point)).toBe(false);
+		expect(generateSupportPlan([point]).unresolvedPoints).toEqual([
+			{ pointId: point.id, reason: 'outside-build-plate' }
+		]);
+	});
+
+	it('allows a plate support whose complete foot touches the build-plate boundary', () => {
+		const point = {
+			id: 'support-point-1',
+			position: { x: SUPPORT_FOOT_DIAMETER_MM / 2, y: 14, z: 10 },
+			normal: { x: 0, y: 0, z: -1 }
+		};
+
+		expect(isSupportFootInsideBuildPlate(point)).toBe(true);
+		expect(createPostSupportStructure(point)).not.toBeNull();
+	});
+
+	it('does not apply the build-plate foot check to a support ending on the model', () => {
+		const point = {
+			id: 'support-point-1',
+			position: { x: 0.5, y: 14, z: 10 },
+			normal: { x: 0, y: 0, z: -1 },
+			lowerContactPosition: { x: 0.5, y: 14, z: 3 }
+		};
+
+		expect(isSupportFootInsideBuildPlate(point)).toBe(true);
+		expect(createPostSupportStructure(point)).not.toBeNull();
 	});
 
 	it('generates structures without replacing or mutating their source points', () => {

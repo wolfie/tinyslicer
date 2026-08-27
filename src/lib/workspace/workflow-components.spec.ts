@@ -47,6 +47,7 @@ describe('workflow UI', () => {
 			modelTranslation: { x: 0, y: 0, z: 0 },
 			modelRotation: { x: 0, y: 0, z: 0, w: 1 },
 			transformedModelBounds: model.bounds,
+			modelOverlapsSupportMargin: false,
 			interactionMode: 'transform-model' as const,
 			supportPointCount: 0,
 			supportStructures: [],
@@ -66,6 +67,19 @@ describe('workflow UI', () => {
 		}).body;
 		expect(valid).toContain('Add supports');
 		expect(valid).not.toContain('Outside print volume');
+		expect(valid).not.toContain('Limited support area');
+
+		const nearEdge = render(WorkspaceViewport, {
+			props: {
+				...commonProps,
+				modelOutsideBuildVolume: false,
+				modelOverlapsSupportMargin: true,
+				canEnterSupports: true
+			}
+		}).body;
+		expect(nearEdge).toContain('Limited support area');
+		expect(nearEdge).toContain('Parts of the model are too close to the edge for supports.');
+		expect(nearEdge).toContain('Add supports');
 
 		const overflowing = render(WorkspaceViewport, {
 			props: {
@@ -87,6 +101,7 @@ describe('workflow UI', () => {
 				modelRotation: { x: 0, y: 0, z: 0, w: 1 },
 				transformedModelBounds: model.bounds,
 				modelOutsideBuildVolume: false,
+				modelOverlapsSupportMargin: false,
 				canEnterSupports: true,
 				interactionMode: 'place-supports',
 				supportPointCount: 0,

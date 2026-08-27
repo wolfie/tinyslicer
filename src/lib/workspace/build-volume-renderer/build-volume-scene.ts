@@ -17,6 +17,7 @@ import {
 } from 'three';
 
 import { TINYMAKER_PROFILE } from '$lib/printer/tinymaker';
+import { SUPPORT_PLATE_EDGE_MARGIN_MM } from '../supports';
 
 const BUILD_VOLUME = TINYMAKER_PROFILE.buildVolume;
 const RULER_OFFSET = 0.8;
@@ -88,6 +89,44 @@ function createPlate(): Mesh {
 	const plate = new Mesh(geometry, material);
 	plate.position.set(BUILD_VOLUME.x / 2, BUILD_VOLUME.y / 2, -0.01);
 	return plate;
+}
+
+function createSupportPlateMargin(): Group {
+	const group = new Group();
+	group.name = 'support-plate-margin';
+	const material = new MeshBasicMaterial({
+		color: 0x9aa4b2,
+		opacity: 0.24,
+		transparent: true,
+		side: DoubleSide,
+		depthWrite: false
+	});
+	const margin = SUPPORT_PLATE_EDGE_MARGIN_MM;
+	const innerHeight = BUILD_VOLUME.y - margin * 2;
+	const regions = [
+		{ width: BUILD_VOLUME.x, height: margin, x: BUILD_VOLUME.x / 2, y: margin / 2 },
+		{
+			width: BUILD_VOLUME.x,
+			height: margin,
+			x: BUILD_VOLUME.x / 2,
+			y: BUILD_VOLUME.y - margin / 2
+		},
+		{ width: margin, height: innerHeight, x: margin / 2, y: BUILD_VOLUME.y / 2 },
+		{
+			width: margin,
+			height: innerHeight,
+			x: BUILD_VOLUME.x - margin / 2,
+			y: BUILD_VOLUME.y / 2
+		}
+	];
+
+	for (const region of regions) {
+		const mesh = new Mesh(new PlaneGeometry(region.width, region.height), material);
+		mesh.position.set(region.x, region.y, 0.005);
+		group.add(mesh);
+	}
+
+	return group;
 }
 
 function createGrid(): LineSegments {
@@ -162,9 +201,20 @@ function createAxes(): Group {
 
 export class BuildVolumeScene {
 	readonly group = new Group();
+	#supportPlateMargin = createSupportPlateMargin();
 
 	constructor() {
-		this.group.add(createPlate(), createGrid(), createBounds(), createAxes());
+		this.group.add(
+			createPlate(),
+			createGrid(),
+			this.#supportPlateMargin,
+			createBounds(),
+			createAxes()
+		);
+	}
+
+	setSupportPlateMarginVisible(visible: boolean) {
+		this.#supportPlateMargin.visible = visible;
 	}
 
 	dispose() {

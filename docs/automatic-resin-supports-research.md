@@ -188,12 +188,12 @@ It does not generate supports. Its format implementations would be relevant if T
 
 The most capable open-source resin tools are copyleft:
 
-| Project | License | Relevant capability |
-| --- | --- | --- |
-| [PrusaSlicer](https://github.com/prusa3d/PrusaSlicer) | AGPL-3.0-or-later | Mature SLA contact generation, support trees, pads, and slicing pipeline |
-| [UVtools](https://github.com/sn4k3/UVtools) | AGPL-3.0 | Layer analysis for islands, overhangs, resin traps, suction cups, and other print risks |
-| [DragonFruit](https://github.com/Open-Resin-Alliance/DragonFruit) | AGPL-3.0 | New experimental island, overhang, tree, cavity, and bracing auto-support pipeline |
-| [mslicer](https://github.com/connorslade/mslicer) | GPL-3.0 | Fast MSLA slicing and several output formats; support placement is not currently its strength |
+| Project                                                           | License           | Relevant capability                                                                           |
+| ----------------------------------------------------------------- | ----------------- | --------------------------------------------------------------------------------------------- |
+| [PrusaSlicer](https://github.com/prusa3d/PrusaSlicer)             | AGPL-3.0-or-later | Mature SLA contact generation, support trees, pads, and slicing pipeline                      |
+| [UVtools](https://github.com/sn4k3/UVtools)                       | AGPL-3.0          | Layer analysis for islands, overhangs, resin traps, suction cups, and other print risks       |
+| [DragonFruit](https://github.com/Open-Resin-Alliance/DragonFruit) | AGPL-3.0          | New experimental island, overhang, tree, cavity, and bracing auto-support pipeline            |
+| [mslicer](https://github.com/connorslade/mslicer)                 | GPL-3.0           | Fast MSLA slicing and several output formats; support placement is not currently its strength |
 
 These projects are useful for understanding expected features, terminology, settings, and failure cases. Their implementation should not be copied or closely translated into a permissively licensed TinySlicer unless the project is willing to adopt the applicable copyleft terms.
 

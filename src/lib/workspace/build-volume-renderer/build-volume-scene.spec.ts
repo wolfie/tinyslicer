@@ -3,9 +3,26 @@ import { describe, expect, it } from 'vitest';
 
 import { TINYMAKER_PROFILE } from '$lib/printer/tinymaker';
 import {
+	BuildVolumeScene,
 	createBuildVolumeClippingPlanes,
 	createMillimetreRulerVertices
 } from './build-volume-scene';
+
+describe('support-safe build-plate margin', () => {
+	it('renders four inside-perimeter strips that can be hidden outside Prepare', () => {
+		const scene = new BuildVolumeScene();
+		const margin = scene.group.getObjectByName('support-plate-margin');
+
+		expect(margin).toBeDefined();
+		expect(margin?.children).toHaveLength(4);
+		expect(margin?.visible).toBe(true);
+
+		scene.setSupportPlateMarginVisible(false);
+
+		expect(margin?.visible).toBe(false);
+		scene.dispose();
+	});
+});
 
 function segmentAt(vertices: number[], index: number): [Vector3, Vector3] {
 	const offset = index * 6;

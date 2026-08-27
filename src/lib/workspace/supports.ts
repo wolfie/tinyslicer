@@ -1,4 +1,5 @@
-import type { Point3 } from './stl-importer';
+import { TINYMAKER_PROFILE } from '$lib/printer/tinymaker';
+import type { Bounds3, Point3 } from './stl-importer';
 
 export const SUPPORT_SHAFT_DIAMETER_MM = 1.275;
 export const SUPPORT_FOOT_DIAMETER_MM = 4;
@@ -11,8 +12,12 @@ export const SUPPORT_FOOT_FLARE_ANGLE_DEGREES = 45;
 export const SUPPORT_FOOT_HEIGHT_MM =
 	((SUPPORT_FOOT_DIAMETER_MM - SUPPORT_SHAFT_DIAMETER_MM) / 2) *
 	Math.tan((SUPPORT_FOOT_FLARE_ANGLE_DEGREES * Math.PI) / 180);
+export const SUPPORT_PLATE_EDGE_MARGIN_MM =
+	SUPPORT_FOOT_DIAMETER_MM / 2 +
+	SUPPORT_NECK_LENGTH_MM * Math.sin((SUPPORT_MAX_NECK_ANGLE_DEGREES * Math.PI) / 180);
 
 const SUPPORT_GEOMETRY_EPSILON_MM = 1e-6;
+const BUILD_VOLUME = TINYMAKER_PROFILE.buildVolume;
 
 export type ModelSurfaceHit = {
 	position: Point3;
@@ -48,7 +53,7 @@ export type SupportStructure = {
 
 export type UnresolvedSupportPoint = {
 	pointId: string;
-	reason: 'insufficient-height';
+	reason: 'insufficient-height' | 'outside-build-plate';
 };
 
 export type SupportPlan = {
@@ -94,6 +99,28 @@ export function supportNeckBase(point: ModelSurfaceHit): Point3 {
 		y: point.position.y + neckDirection.y * SUPPORT_NECK_LENGTH_MM,
 		z: point.position.z + neckDirection.z * SUPPORT_NECK_LENGTH_MM
 	};
+}
+
+export function doesModelProjectionOverlapSupportMargin(bounds: Bounds3): boolean {
+	return (
+		bounds.min.x < SUPPORT_PLATE_EDGE_MARGIN_MM + SUPPORT_GEOMETRY_EPSILON_MM ||
+		bounds.max.x > BUILD_VOLUME.x - SUPPORT_PLATE_EDGE_MARGIN_MM - SUPPORT_GEOMETRY_EPSILON_MM ||
+		bounds.min.y < SUPPORT_PLATE_EDGE_MARGIN_MM + SUPPORT_GEOMETRY_EPSILON_MM ||
+		bounds.max.y > BUILD_VOLUME.y - SUPPORT_PLATE_EDGE_MARGIN_MM - SUPPORT_GEOMETRY_EPSILON_MM
+	);
+}
+
+export function isSupportFootInsideBuildPlate(point: ModelSurfaceHit): boolean {
+	if (point.lowerContactPosition) return true;
+
+	const center = supportNeckBase(point);
+	const radius = SUPPORT_FOOT_DIAMETER_MM / 2;
+	return (
+		center.x - radius >= -SUPPORT_GEOMETRY_EPSILON_MM &&
+		center.x + radius <= BUILD_VOLUME.x + SUPPORT_GEOMETRY_EPSILON_MM &&
+		center.y - radius >= -SUPPORT_GEOMETRY_EPSILON_MM &&
+		center.y + radius <= BUILD_VOLUME.y + SUPPORT_GEOMETRY_EPSILON_MM
+	);
 }
 
 export function createPostSupportStructure(point: SupportPoint): SupportStructure | null {
@@ -146,6 +173,7 @@ export function createPostSupportStructure(point: SupportPoint): SupportStructur
 		};
 	}
 
+	if (!isSupportFootInsideBuildPlate(point)) return null;
 	if (neckBase.z <= SUPPORT_FOOT_HEIGHT_MM + SUPPORT_GEOMETRY_EPSILON_MM) return null;
 
 	return {
@@ -191,7 +219,10 @@ export function generateSupportPlan(points: readonly SupportPoint[]): SupportPla
 		if (structure) {
 			structures.push(structure);
 		} else {
-			unresolvedPoints.push({ pointId: point.id, reason: 'insufficient-height' });
+			unresolvedPoints.push({
+				pointId: point.id,
+				reason: isSupportFootInsideBuildPlate(point) ? 'insufficient-height' : 'outside-build-plate'
+			});
 		}
 	}
 

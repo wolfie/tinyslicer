@@ -25,6 +25,7 @@
 		modelRotation: ModelRotation;
 		transformedModelBounds: Bounds3 | null;
 		modelOutsideBuildVolume: boolean;
+		modelOverlapsSupportMargin: boolean;
 		canEnterSupports: boolean;
 		interactionMode: BuildVolumeInteractionMode;
 		supportPointCount: number;
@@ -42,6 +43,7 @@
 		modelRotation,
 		transformedModelBounds,
 		modelOutsideBuildVolume,
+		modelOverlapsSupportMargin,
 		canEnterSupports,
 		interactionMode,
 		supportPointCount,
@@ -179,34 +181,50 @@
 									: 'Middle-drag to orbit'}
 			</span>
 		</div>
-		{#if modelOutsideBuildVolume}
-			<button
-				type="button"
-				class="volume-warning"
-				onclick={focusFirstClippedRegion}
-				aria-live="assertive"
-				aria-label="Outside print volume. Show the first area beyond the printable volume."
-			>
-				<svg viewBox="0 0 24 24" aria-hidden="true">
-					<path d="M12 3 22 20H2L12 3Z" />
-					<path d="M12 9v5m0 3v.1" />
-				</svg>
-				<div>
-					<strong>Outside print volume</strong>
-					<span>Click to inspect the first clipped area.</span>
-				</div>
-			</button>
-		{:else if interactionMode === 'transform-model' && canEnterSupports}
-			<button type="button" class="supports-button" onclick={onEnterSupports}>
-				<svg viewBox="0 0 24 24" aria-hidden="true">
-					<circle cx="8" cy="8" r="2.5" /><path d="M8 10.5V20m8-13v13M4 20h16" />
-					<circle cx="16" cy="4.5" r="2.5" />
-				</svg>
-				<div>
-					<strong>Add supports</strong>
-					<span>Model placement is ready.</span>
-				</div>
-			</button>
+		{#if modelOutsideBuildVolume || (interactionMode === 'transform-model' && canEnterSupports)}
+			<div class="viewport-actions">
+				{#if modelOutsideBuildVolume}
+					<button
+						type="button"
+						class="volume-warning"
+						onclick={focusFirstClippedRegion}
+						aria-live="assertive"
+						aria-label="Outside print volume. Show the first area beyond the printable volume."
+					>
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<path d="M12 3 22 20H2L12 3Z" />
+							<path d="M12 9v5m0 3v.1" />
+						</svg>
+						<div>
+							<strong>Outside print volume</strong>
+							<span>Click to inspect the first clipped area.</span>
+						</div>
+					</button>
+				{:else}
+					{#if modelOverlapsSupportMargin}
+						<div class="support-margin-info" role="status">
+							<svg viewBox="0 0 24 24" aria-hidden="true">
+								<circle cx="12" cy="12" r="9" />
+								<path d="M12 11v5m0-8v.1" />
+							</svg>
+							<div>
+								<strong>Limited support area</strong>
+								<span>Parts of the model are too close to the edge for supports.</span>
+							</div>
+						</div>
+					{/if}
+					<button type="button" class="supports-button" onclick={onEnterSupports}>
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<circle cx="8" cy="8" r="2.5" /><path d="M8 10.5V20m8-13v13M4 20h16" />
+							<circle cx="16" cy="4.5" r="2.5" />
+						</svg>
+						<div>
+							<strong>Add supports</strong>
+							<span>Model placement is ready.</span>
+						</div>
+					</button>
+				{/if}
+			</div>
 		{/if}
 		{#if placingSupports}
 			<p class="support-count" aria-live="polite">
@@ -405,22 +423,28 @@
 		border-color: rgba(90, 168, 228, 0.55);
 		color: #a8d9ff;
 	}
-	.volume-warning,
-	.supports-button {
+	.viewport-actions {
 		position: absolute;
 		right: 17px;
 		bottom: 17px;
 		display: flex;
+		width: min(280px, calc(100% - 34px));
+		flex-direction: column;
+		gap: 8px;
+	}
+	.volume-warning,
+	.support-margin-info,
+	.supports-button {
+		display: flex;
 		align-items: center;
 		gap: 10px;
-		max-width: 260px;
+		width: 100%;
 		padding: 9px 11px;
 		border-radius: 8px;
 		box-shadow:
 			0 8px 24px rgba(0, 0, 0, 0.24),
 			inset 0 1px rgba(255, 255, 255, 0.06);
 		backdrop-filter: blur(8px);
-		cursor: pointer;
 		text-align: left;
 		transition:
 			border-color 120ms ease,
@@ -431,6 +455,7 @@
 		border: 1px solid rgba(255, 200, 74, 0.48);
 		background: rgba(49, 38, 13, 0.88);
 		color: #ffc84a;
+		cursor: pointer;
 	}
 	.volume-warning:hover {
 		border-color: rgba(255, 210, 92, 0.72);
@@ -444,6 +469,12 @@
 		border: 1px solid rgba(87, 220, 139, 0.48);
 		background: rgba(18, 61, 37, 0.9);
 		color: #70e6a1;
+		cursor: pointer;
+	}
+	.support-margin-info {
+		border: 1px solid rgba(164, 174, 188, 0.38);
+		background: rgba(38, 45, 55, 0.9);
+		color: #b5beca;
 	}
 	.supports-button:hover {
 		border-color: rgba(112, 230, 161, 0.76);
@@ -457,6 +488,7 @@
 		outline-offset: 3px;
 	}
 	.volume-warning svg,
+	.support-margin-info svg,
 	.supports-button svg {
 		width: 22px;
 		flex: 0 0 auto;
@@ -467,12 +499,14 @@
 		stroke-width: 1.6;
 	}
 	.volume-warning div,
+	.support-margin-info div,
 	.supports-button div {
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
 	}
 	.volume-warning strong,
+	.support-margin-info strong,
 	.supports-button strong {
 		font-size: 10px;
 		font-weight: 700;
@@ -480,12 +514,16 @@
 		text-transform: uppercase;
 	}
 	.volume-warning span,
+	.support-margin-info span,
 	.supports-button span {
 		font-size: 9px;
 		line-height: 1.35;
 	}
 	.volume-warning span {
 		color: #d8b867;
+	}
+	.support-margin-info span {
+		color: #929daa;
 	}
 	.supports-button span {
 		color: #8ecba7;
@@ -544,12 +582,14 @@
 		.axis-legend small {
 			display: none;
 		}
-		.volume-warning,
-		.supports-button,
+		.viewport-actions {
+			right: 12px;
+			bottom: 54px;
+			width: calc(100% - 24px);
+		}
 		.support-count {
 			right: 12px;
 			bottom: 54px;
-			max-width: calc(100% - 24px);
 		}
 	}
 </style>

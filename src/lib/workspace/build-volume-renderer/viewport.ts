@@ -135,6 +135,9 @@ export class BuildVolumeViewport {
 		this.#model.setTransform(state.modelTranslation, state.modelRotation);
 		this.#interactions.setInteractionMode(state.interactionMode);
 		this.#supports.setStructures(state.supportStructures);
+		this.#buildVolumeScene.setSupportPlateMarginVisible(
+			state.interactionMode === 'transform-model'
+		);
 
 		this.#camera.position.set(
 			CAMERA_TARGET.x + CAMERA_DISTANCE * Math.cos(state.cameraPitch) * Math.cos(state.cameraYaw),
