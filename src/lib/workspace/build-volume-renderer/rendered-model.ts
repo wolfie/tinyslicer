@@ -3,12 +3,14 @@ import {
 	BufferGeometry,
 	DoubleSide,
 	Mesh,
+	MeshBasicMaterial,
 	MeshStandardMaterial,
 	Scene,
 	Vector3
 } from 'three';
 
 import type { ImportedStlModel } from '../stl-importer';
+import { detectSupportRiskTriangles } from '../support-risk';
 import { createBuildVolumeClippingPlanes } from './build-volume-scene';
 import {
 	IDENTITY_MODEL_ROTATION,
@@ -43,8 +45,21 @@ export class RenderedModel {
 		clippingPlanes: createBuildVolumeClippingPlanes('outside'),
 		clipIntersection: true
 	});
+	#supportRiskMaterial = new MeshBasicMaterial({
+		color: 0xffd34f,
+		transparent: true,
+		opacity: 0.9,
+		side: DoubleSide,
+		depthWrite: false,
+		polygonOffset: true,
+		polygonOffsetFactor: -1,
+		polygonOffsetUnits: -1,
+		clippingPlanes: createBuildVolumeClippingPlanes('inside')
+	});
 	#modelMesh: Mesh | null = null;
 	#outsideModelMesh: Mesh | null = null;
+	#supportRiskMesh: Mesh | null = null;
+	#supportRiskGeometryDirty = false;
 
 	constructor(scene: Scene) {
 		this.#scene = scene;
@@ -67,6 +82,7 @@ export class RenderedModel {
 		this.currentModel = model;
 		this.#removeMeshes();
 		if (!model) return true;
+		this.#supportRiskGeometryDirty = true;
 
 		this.center.set(
 			(model.bounds.min.x + model.bounds.max.x) / 2,
@@ -93,11 +109,21 @@ export class RenderedModel {
 		this.#modelMesh.renderOrder = 1;
 		this.#outsideModelMesh = new Mesh(geometry, this.#outsideModelMaterial);
 		this.#outsideModelMesh.renderOrder = 2;
-		this.#scene.add(this.#modelMesh, this.#outsideModelMesh);
+		this.#supportRiskMesh = new Mesh(new BufferGeometry(), this.#supportRiskMaterial);
+		this.#supportRiskMesh.renderOrder = 3;
+		this.#supportRiskMesh.visible = false;
+		this.#scene.add(this.#modelMesh, this.#outsideModelMesh, this.#supportRiskMesh);
 		return true;
 	}
 
 	setTransform(translation: ModelTranslation, rotation: ModelRotation) {
+		this.#supportRiskGeometryDirty =
+			this.#supportRiskGeometryDirty ||
+			translation.z !== this.currentTranslation.z ||
+			rotation.x !== this.currentRotation.x ||
+			rotation.y !== this.currentRotation.y ||
+			rotation.z !== this.currentRotation.z ||
+			rotation.w !== this.currentRotation.w;
 		this.currentTranslation = translation;
 		this.currentRotation = rotation;
 		const quaternion = modelRotationQuaternion(rotation);
@@ -110,12 +136,42 @@ export class RenderedModel {
 			this.#outsideModelMesh.position.copy(position);
 			this.#outsideModelMesh.quaternion.copy(quaternion);
 		}
+		if (this.#supportRiskMesh) {
+			this.#supportRiskMesh.position.copy(position);
+			this.#supportRiskMesh.quaternion.copy(quaternion);
+		}
+		if (this.#supportRiskMesh?.visible && this.#supportRiskGeometryDirty) {
+			this.#refreshSupportRiskGeometry();
+		}
+	}
+
+	setSupportRiskVisible(visible: boolean) {
+		if (!this.#supportRiskMesh) return;
+		this.#supportRiskMesh.visible = visible;
+		if (visible && this.#supportRiskGeometryDirty) this.#refreshSupportRiskGeometry();
 	}
 
 	dispose() {
 		this.#removeMeshes();
 		this.#modelMaterial.dispose();
 		this.#outsideModelMaterial.dispose();
+		this.#supportRiskMaterial.dispose();
+	}
+
+	#refreshSupportRiskGeometry() {
+		this.#supportRiskGeometryDirty = false;
+		if (!this.currentModel || !this.#supportRiskMesh) return;
+
+		const preview = detectSupportRiskTriangles(
+			this.currentModel,
+			this.currentTranslation,
+			this.currentRotation
+		);
+		const geometry = new BufferGeometry();
+		geometry.setAttribute('position', new BufferAttribute(preview.positions, 3));
+		geometry.translate(-this.center.x, -this.center.y, -this.center.z);
+		this.#supportRiskMesh.geometry.dispose();
+		this.#supportRiskMesh.geometry = geometry;
 	}
 
 	#removeMeshes() {
@@ -127,6 +183,11 @@ export class RenderedModel {
 		if (this.#outsideModelMesh) {
 			this.#scene.remove(this.#outsideModelMesh);
 			this.#outsideModelMesh = null;
+		}
+		if (this.#supportRiskMesh) {
+			this.#scene.remove(this.#supportRiskMesh);
+			this.#supportRiskMesh.geometry.dispose();
+			this.#supportRiskMesh = null;
 		}
 	}
 }

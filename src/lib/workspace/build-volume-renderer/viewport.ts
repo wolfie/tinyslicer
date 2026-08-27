@@ -133,6 +133,7 @@ export class BuildVolumeViewport {
 		this.#resize(state.width, state.height, state.dpr);
 		if (this.#model.setModel(state.model)) this.#interactions.cancel();
 		this.#model.setTransform(state.modelTranslation, state.modelRotation);
+		this.#model.setSupportRiskVisible(state.interactionMode === 'place-supports');
 		this.#interactions.setInteractionMode(state.interactionMode);
 		this.#supports.setStructures(state.supportStructures);
 		this.#buildVolumeScene.setSupportPlateMarginVisible(

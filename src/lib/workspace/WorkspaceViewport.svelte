@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { TINYMAKER_PROFILE } from '$lib/printer/tinymaker';
+	import { SUPPORT_RISK_ANGLE_DEGREES } from './support-risk';
 	import {
 		firstBuildVolumeOverflowDirection,
 		initializeBuildVolume,
@@ -165,6 +166,16 @@
 			</svg>
 			X/Y origin is the upper-left of the layer image · Z=0 is the build plate
 		</div>
+		{#if placingSupports && model}
+			<div
+				class="support-risk-legend"
+				role="status"
+				title="Fast surface-angle estimate. Layer-mask island analysis may identify additional areas."
+			>
+				<span></span>
+				Yellow faces may need support · {SUPPORT_RISK_ANGLE_DEGREES}° preview
+			</div>
+		{/if}
 		<div class={['orbit-hint', { active: camera.orbiting || modelInteraction !== null }]}>
 			<span class="mouse-icon" aria-hidden="true"><i></i></span>
 			<span>
@@ -393,6 +404,28 @@
 		color: #718096;
 		font-size: 9px;
 	}
+	.support-risk-legend {
+		position: absolute;
+		top: 52px;
+		right: 16px;
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		padding: 6px 9px;
+		border: 1px solid rgba(255, 211, 79, 0.35);
+		border-radius: 6px;
+		background: rgba(45, 36, 12, 0.78);
+		color: #e6c65f;
+		font-size: 9px;
+		pointer-events: none;
+	}
+	.support-risk-legend span {
+		width: 7px;
+		height: 7px;
+		border-radius: 2px;
+		background: #ffd34f;
+		box-shadow: 0 0 7px rgba(255, 211, 79, 0.55);
+	}
 	.coordinate-note svg {
 		width: 13px;
 		fill: none;
@@ -573,6 +606,9 @@
 	@media (max-width: 820px) {
 		.coordinate-note {
 			display: none;
+		}
+		.support-risk-legend {
+			top: 16px;
 		}
 	}
 	@media (max-width: 520px) {
