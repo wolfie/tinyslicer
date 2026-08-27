@@ -1,54 +1,15 @@
 <script lang="ts">
 	import { TINYMAKER_PROFILE } from '$lib/printer/tinymaker';
-	import {
-		areBoundsOutsideBuildVolume,
-		firstBuildVolumeOverflowDirection,
-		IDENTITY_MODEL_ROTATION,
-		ROTATION_SNAP_DEGREES,
-		initializeBuildVolume,
-		modelRotationDegrees,
-		paintBuildVolume,
-		startModelTransform,
-		stopModelTransform,
-		transformModelGeometryBounds,
-		translateModelBounds,
-		updateModelTransform,
-		type ModelInteraction,
-		type ModelRotation,
-		type ModelTranslation
-	} from '$lib/workspace/build-volume-renderer';
-	import { CanvasMetrics } from '$lib/workspace/canvas-metrics.svelte';
-	import { OrbitCamera } from '$lib/workspace/orbit-camera.svelte';
-	import { importStlFile, type ImportedStlModel } from '$lib/workspace/stl-importer';
+	import DiscardSupportsDialog from '$lib/workspace/DiscardSupportsDialog.svelte';
+	import WorkflowHeader from '$lib/workspace/WorkflowHeader.svelte';
+	import WorkspaceViewport from '$lib/workspace/WorkspaceViewport.svelte';
+	import { importStlFile } from '$lib/workspace/stl-importer';
+	import { WorkspaceState, type WorkflowStep } from '$lib/workspace/workspace-state.svelte';
 
-	const camera = new OrbitCamera();
-	const canvasMetrics = new CanvasMetrics();
-	let model = $state.raw<ImportedStlModel | null>(null);
-	let modelTranslation = $state<ModelTranslation>({ x: 0, y: 0, z: 0 });
-	let modelRotation = $state<ModelRotation>({ ...IDENTITY_MODEL_ROTATION });
-	let modelInteraction = $state<ModelInteraction | null>(null);
+	const workspace = new WorkspaceState();
 	let importState = $state<'idle' | 'loading' | 'error'>('idle');
 	let importError = $state('');
 	let isDraggingFile = $state(false);
-	let rotatedModelBounds = $derived(
-		model ? transformModelGeometryBounds(model, { x: 0, y: 0, z: 0 }, modelRotation) : null
-	);
-	let transformedModelBounds = $derived(
-		rotatedModelBounds ? translateModelBounds(rotatedModelBounds, modelTranslation) : null
-	);
-	let modelOutsideBuildVolume = $derived(
-		transformedModelBounds ? areBoundsOutsideBuildVolume(transformedModelBounds) : false
-	);
-	let rotationDegrees = $derived(modelRotationDegrees(modelRotation));
-	let transformedDimensions = $derived.by(() => {
-		const bounds = rotatedModelBounds;
-		if (!bounds) return null;
-		return {
-			x: bounds.max.x - bounds.min.x,
-			y: bounds.max.y - bounds.min.y,
-			z: bounds.max.z - bounds.min.z
-		};
-	});
 	let dragDepth = 0;
 
 	function formatMillimetres(value: number): string {
@@ -75,9 +36,7 @@
 		importError = '';
 		try {
 			const importedModel = await importStlFile(file);
-			modelTranslation = { x: 0, y: 0, z: 0 };
-			modelRotation = { ...IDENTITY_MODEL_ROTATION };
-			model = importedModel;
+			workspace.setModel(importedModel);
 			importState = 'idle';
 		} catch (error) {
 			importState = 'error';
@@ -127,47 +86,8 @@
 		if (file) await loadStl(file);
 	}
 
-	function setModelTranslation(translation: ModelTranslation) {
-		modelTranslation = translation;
-	}
-
-	function setModelRotation(rotation: ModelRotation) {
-		modelRotation = rotation;
-	}
-
-	function focusFirstClippedRegion() {
-		if (!transformedModelBounds) return;
-		const direction = firstBuildVolumeOverflowDirection(transformedModelBounds);
-		if (direction) camera.orbitToward(direction);
-	}
-
-	function handlePointerDown(event: PointerEvent) {
-		if (
-			model &&
-			startModelTransform(
-				event,
-				modelTranslation,
-				modelRotation,
-				setModelTranslation,
-				setModelRotation,
-				(interaction) => {
-					modelInteraction = interaction;
-				}
-			)
-		) {
-			return;
-		}
-		camera.start(event);
-	}
-
-	function handlePointerMove(event: PointerEvent) {
-		if (updateModelTransform(event)) return;
-		camera.update(event);
-	}
-
-	function handlePointerEnd(event: PointerEvent) {
-		if (stopModelTransform(event)) return;
-		camera.stop(event);
+	function requestStep(step: WorkflowStep) {
+		workspace.requestStep(step);
 	}
 </script>
 
@@ -198,177 +118,87 @@
 			</div>
 		</div>
 	{/if}
-	<header class="topbar">
-		<div class="brand" aria-label="TinySlicer">
-			<span class="brand-mark" aria-hidden="true"
-				><svg viewBox="0 0 32 32"
-					><path d="M16 3.5 27 9.7v12.6L16 28.5 5 22.3V9.7L16 3.5Z" /><path
-						d="m5.5 10 10.5 6 10.5-6M16 16v12"
-					/></svg
-				></span
-			>
-			<span>Tiny<span>Slicer</span></span>
-		</div>
-		<nav class="workflow" aria-label="Slicing workflow">
-			<span class="workflow-step active"><b>1</b> Prepare</span><span
-				class="workflow-divider"
-				aria-hidden="true"
-			></span>
-			<span class="workflow-step"><b>2</b> Preview</span><span
-				class="workflow-divider"
-				aria-hidden="true"
-			></span>
-			<span class="workflow-step"><b>3</b> Export</span>
-		</nav>
-		<div class="topbar-actions">
-			<span class="local-badge"
-				><svg viewBox="0 0 16 16" aria-hidden="true"
-					><path d="M8 1.5 13 3v4.2c0 3.1-2 5.9-5 7.3-3-1.4-5-4.2-5-7.3V3l5-1.5Z" /></svg
-				>Local only</span
-			>
-			<input
-				id="stl-file-input"
-				class="file-input"
-				type="file"
-				accept=".stl,model/stl,application/sla"
-				disabled={importState === 'loading'}
-				onchange={handleStlSelection}
-			/>
-			<label
-				class="open-button"
-				class:disabled={importState === 'loading'}
-				for="stl-file-input"
-				aria-disabled={importState === 'loading'}
-				><svg viewBox="0 0 18 18" aria-hidden="true"
-					><path d="M9 12.5v-9m0 0L5.8 6.7M9 3.5l3.2 3.2M3 11.5v3h12v-3" /></svg
-				>{importState === 'loading' ? 'Importing…' : 'Open STL'}</label
-			>
-		</div>
-	</header>
+	<WorkflowHeader
+		currentStep={workspace.step}
+		canEnterSupports={workspace.canEnterSupports}
+		importing={importState === 'loading'}
+		onStepRequest={requestStep}
+		onFileSelection={handleStlSelection}
+	/>
 
 	<main class="workspace">
-		<section class="viewport-panel" aria-label="3D printer build volume">
-			<div class="viewport-heading">
-				<div>
-					<p class="eyebrow">3D workspace</p>
-					<h1>Build volume</h1>
-				</div>
-				<div class="view-chip"><span></span> Perspective</div>
-			</div>
-			<div
-				class={[
-					'viewport-canvas',
-					{
-						orbiting: camera.orbiting,
-						translating: modelInteraction?.kind === 'translation',
-						rotating: modelInteraction?.kind === 'rotation'
-					}
-				]}
-			>
-				<canvas
-					{@attach canvasMetrics.observe}
-					{@attach initializeBuildVolume}
-					{@attach paintBuildVolume({
-						cameraYaw: camera.yaw,
-						cameraPitch: camera.pitch,
-						width: canvasMetrics.width,
-						height: canvasMetrics.height,
-						dpr: canvasMetrics.dpr,
-						model,
-						modelTranslation,
-						modelRotation
-					})}
-					onpointerdown={handlePointerDown}
-					onpointermove={handlePointerMove}
-					onpointerup={handlePointerEnd}
-					onpointercancel={handlePointerEnd}
-					onauxclick={(event) => event.preventDefault()}
-					aria-label={`Interactive 3D view of the ${TINYMAKER_PROFILE.buildVolume.x} by ${TINYMAKER_PROFILE.buildVolume.y} by ${TINYMAKER_PROFILE.buildVolume.z} millimetre ${TINYMAKER_PROFILE.name} build volume${model ? ` containing ${model.name}. Drag the model to move it, click an arrow to nudge it, or drag a colored ring to rotate it in ${ROTATION_SNAP_DEGREES} degree steps. Hold Shift while dragging a ring for free rotation` : ''}. Drag with the middle mouse button to orbit.`}
-				></canvas>
-				<div class="axis-legend" aria-label="Axis directions">
-					<span class="axis-x"><i></i>X <small>{TINYMAKER_PROFILE.buildVolume.x} mm</small></span>
-					<span class="axis-y"><i></i>Y <small>{TINYMAKER_PROFILE.buildVolume.y} mm</small></span>
-					<span class="axis-z"><i></i>Z <small>{TINYMAKER_PROFILE.buildVolume.z} mm</small></span>
-				</div>
-				<div class="coordinate-note">
-					<svg viewBox="0 0 18 18" aria-hidden="true"
-						><circle cx="9" cy="9" r="7" /><path d="M9 8v4m0-7v.1" /></svg
-					>X/Y origin is the upper-left of the layer image · Z=0 is the build plate
-				</div>
-				<div class="orbit-hint" class:active={camera.orbiting || modelInteraction !== null}>
-					<span class="mouse-icon" aria-hidden="true"><i></i></span><span
-						>{modelInteraction?.kind === 'rotation'
-							? `Rotating ${modelInteraction.axis.toUpperCase()} · ${ROTATION_SNAP_DEGREES}° snap · Hold Shift for free`
-							: modelInteraction?.kind === 'translation'
-								? 'Moving model'
-								: camera.orbiting
-									? 'Orbiting view'
-									: model
-										? `Drag rings to rotate · ${ROTATION_SNAP_DEGREES}° snap · Shift for free`
-										: 'Middle-drag to orbit'}</span
-					>
-				</div>
-				{#if modelOutsideBuildVolume}
-					<button
-						type="button"
-						class="volume-warning"
-						onclick={focusFirstClippedRegion}
-						aria-live="assertive"
-						aria-label="Outside print volume. Show the first area beyond the printable volume."
-					>
-						<svg viewBox="0 0 24 24" aria-hidden="true">
-							<path d="M12 3 22 20H2L12 3Z" />
-							<path d="M12 9v5m0 3v.1" />
-						</svg>
-						<div>
-							<strong>Outside print volume</strong>
-							<span>Click to inspect the first clipped area.</span>
-						</div>
-					</button>
-				{/if}
-			</div>
-		</section>
+		<WorkspaceViewport
+			model={workspace.model}
+			modelTranslation={workspace.modelTranslation}
+			modelRotation={workspace.modelRotation}
+			transformedModelBounds={workspace.transformedModelBounds}
+			modelOutsideBuildVolume={workspace.modelOutsideBuildVolume}
+			canEnterSupports={workspace.canEnterSupports}
+			interactionMode={workspace.interactionMode}
+			supports={workspace.supports}
+			onTranslationChange={workspace.setModelTranslation}
+			onRotationChange={workspace.setModelRotation}
+			onSupportPlaced={(hit) => workspace.addSupport(hit)}
+			onEnterSupports={() => requestStep('supports')}
+			onBackToPrepare={() => requestStep('prepare')}
+		/>
 
 		<aside class="properties" aria-label="Scene properties">
 			<section class="property-section scene-section">
 				<div class="section-heading">
 					<div>
 						<p class="eyebrow">Scene</p>
-						<h2 title={model?.name}>{model?.name ?? 'No model loaded'}</h2>
+						<h2 title={workspace.model?.name}>{workspace.model?.name ?? 'No model loaded'}</h2>
 					</div>
-					<span class="empty-dot" class:loaded={model !== null}></span>
+					<span class={['empty-dot', { loaded: workspace.model !== null }]}></span>
 				</div>
-				{#if model}
+				{#if workspace.model}
 					<div class="model-state">
-						<div class="model-position">
-							<span></span>Offset X {formatTranslation(modelTranslation.x)} · Y
-							{formatTranslation(modelTranslation.y)} · Z
-							{formatTranslation(modelTranslation.z)} mm
-						</div>
-						<div class="model-rotation">
-							<span></span>Rotation X {formatDegrees(rotationDegrees.x)} · Y
-							{formatDegrees(rotationDegrees.y)} · Z {formatDegrees(rotationDegrees.z)}
-						</div>
+						{#if workspace.step === 'prepare'}
+							<div class="model-position">
+								<span></span>Offset X {formatTranslation(workspace.modelTranslation.x)} · Y
+								{formatTranslation(workspace.modelTranslation.y)} · Z
+								{formatTranslation(workspace.modelTranslation.z)} mm
+							</div>
+							<div class="model-rotation">
+								<span></span>Rotation X {formatDegrees(workspace.rotationDegrees.x)} · Y
+								{formatDegrees(workspace.rotationDegrees.y)} · Z
+								{formatDegrees(workspace.rotationDegrees.z)}
+							</div>
+						{:else if workspace.step === 'supports'}
+							<div class="support-mode-summary">
+								<div class="support-mode-heading"><span></span>Support placement</div>
+								<p>Click anywhere on the model surface to add a support point.</p>
+								<strong>{workspace.supports.length}</strong>
+								<small>{workspace.supports.length === 1 ? 'point placed' : 'points placed'}</small>
+							</div>
+						{/if}
 						<dl class="model-details">
 							<div>
 								<dt>Dimensions</dt>
 								<dd>
-									{formatMillimetres(transformedDimensions?.x ?? model.dimensions.x)} ×
-									{formatMillimetres(transformedDimensions?.y ?? model.dimensions.y)} ×
-									{formatMillimetres(transformedDimensions?.z ?? model.dimensions.z)} mm
+									{formatMillimetres(
+										workspace.transformedDimensions?.x ?? workspace.model.dimensions.x
+									)} ×
+									{formatMillimetres(
+										workspace.transformedDimensions?.y ?? workspace.model.dimensions.y
+									)} ×
+									{formatMillimetres(
+										workspace.transformedDimensions?.z ?? workspace.model.dimensions.z
+									)} mm
 								</dd>
 							</div>
 							<div>
 								<dt>Triangles</dt>
-								<dd>{model.triangleCount.toLocaleString()}</dd>
+								<dd>{workspace.model.triangleCount.toLocaleString()}</dd>
 							</div>
 							<div>
 								<dt>Encoding</dt>
-								<dd>{model.format}</dd>
+								<dd>{workspace.model.format}</dd>
 							</div>
 							<div>
 								<dt>File size</dt>
-								<dd>{formatFileSize(model.byteLength)}</dd>
+								<dd>{formatFileSize(workspace.model.byteLength)}</dd>
 							</div>
 						</dl>
 					</div>
@@ -428,6 +258,12 @@
 			</footer>
 		</aside>
 	</main>
+	<DiscardSupportsDialog
+		open={workspace.discardSupportsDialogOpen}
+		supportCount={workspace.supports.length}
+		onCancel={workspace.cancelDiscardSupports}
+		onConfirm={workspace.confirmDiscardSupports}
+	/>
 </div>
 
 <style>
@@ -506,161 +342,16 @@
 		color: #83a8c1;
 		font-size: 11px;
 	}
-	.topbar {
-		display: grid;
-		grid-template-columns: 1fr auto 1fr;
-		align-items: center;
-		height: 68px;
-		padding: 0 22px;
-		border-bottom: 1px solid #1c2634;
-		background: rgba(12, 18, 26, 0.88);
-		backdrop-filter: blur(16px);
-	}
-	.brand {
-		display: inline-flex;
-		align-items: center;
-		gap: 10px;
-		width: fit-content;
-		color: #f1f6fc;
-		font-size: 16px;
-		font-weight: 650;
-		letter-spacing: -0.02em;
-		text-decoration: none;
-	}
-	.brand > span:last-child span {
-		color: #6bb8ff;
-	}
-	.brand-mark {
-		display: grid;
-		width: 32px;
-		height: 32px;
-		place-items: center;
-		border: 1px solid #27527a;
-		border-radius: 9px;
-		background: linear-gradient(145deg, #18324a, #101c29);
-		box-shadow: 0 7px 22px rgba(0, 0, 0, 0.3);
-	}
-	.brand-mark svg {
-		width: 20px;
-		fill: rgba(107, 184, 255, 0.08);
-		stroke: #74bfff;
-		stroke-linejoin: round;
-		stroke-width: 1.4;
-	}
-	.workflow {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-	}
-	.workflow-step {
-		display: flex;
-		align-items: center;
-		gap: 7px;
-		color: #637083;
-		font-size: 11px;
-		font-weight: 600;
-		letter-spacing: 0.03em;
-		text-transform: uppercase;
-	}
-	.workflow-step b {
-		display: grid;
-		width: 19px;
-		height: 19px;
-		place-items: center;
-		border: 1px solid #293548;
-		border-radius: 50%;
-		font-size: 9px;
-	}
-	.workflow-step.active {
-		color: #bddcf8;
-	}
-	.workflow-step.active b {
-		border-color: #3d7bac;
-		background: #16334a;
-		color: #82c6ff;
-	}
-	.workflow-divider {
-		width: 24px;
-		height: 1px;
-		background: #273244;
-	}
-	.topbar-actions {
-		display: flex;
-		justify-content: flex-end;
-		align-items: center;
-		gap: 14px;
-	}
-	.local-badge {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		color: #728298;
-		font-size: 11px;
-	}
-	.local-badge svg {
-		width: 14px;
-		fill: none;
-		stroke: currentColor;
-		stroke-width: 1.2;
-	}
-	.open-button {
-		display: inline-flex;
-		align-items: center;
-		gap: 8px;
-		height: 36px;
-		padding: 0 14px;
-		border: 1px solid #356b96;
-		border-radius: 8px;
-		background: linear-gradient(#214968, #1a3d58);
-		box-shadow:
-			inset 0 1px rgba(255, 255, 255, 0.08),
-			0 4px 14px rgba(0, 0, 0, 0.18);
-		color: #d7ecff;
-		cursor: pointer;
-		font-size: 12px;
-		font-weight: 600;
-	}
-	.file-input {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
-	}
-	.open-button.disabled {
-		cursor: wait;
-		opacity: 0.7;
-	}
-	.open-button svg {
-		width: 16px;
-		fill: none;
-		stroke: currentColor;
-		stroke-linecap: round;
-		stroke-linejoin: round;
-		stroke-width: 1.5;
-	}
 	.workspace {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) 288px;
 		height: calc(100vh - 68px);
 		min-height: 560px;
 	}
-	.viewport-panel {
-		display: grid;
-		grid-template-rows: auto minmax(0, 1fr);
-		min-width: 0;
-		padding: 22px;
-	}
-	.viewport-heading,
 	.section-heading {
 		display: flex;
 		align-items: flex-start;
 		justify-content: space-between;
-	}
-	.viewport-heading {
-		align-items: center;
-		padding: 0 2px 15px;
 	}
 	.eyebrow {
 		margin: 0 0 4px;
@@ -670,19 +361,14 @@
 		letter-spacing: 0.14em;
 		text-transform: uppercase;
 	}
-	h1,
 	h2 {
 		margin: 0;
 		font-weight: 600;
 		letter-spacing: -0.02em;
 	}
-	h1 {
-		font-size: 17px;
-	}
 	h2 {
 		font-size: 14px;
 	}
-	.view-chip,
 	.fixed-badge {
 		display: inline-flex;
 		align-items: center;
@@ -694,207 +380,6 @@
 		color: #8c9caf;
 		font-size: 10px;
 		font-weight: 600;
-	}
-	.view-chip span {
-		width: 6px;
-		height: 6px;
-		border-radius: 50%;
-		background: #67baff;
-		box-shadow: 0 0 8px rgba(103, 186, 255, 0.65);
-	}
-	.viewport-canvas {
-		position: relative;
-		min-height: 0;
-		overflow: hidden;
-		border: 1px solid #202c3b;
-		border-radius: 12px;
-		background:
-			radial-gradient(circle at 50% 48%, rgba(35, 54, 76, 0.21), transparent 28rem),
-			linear-gradient(180deg, #0e151f 0%, #0b1119 100%);
-		box-shadow:
-			inset 0 1px rgba(255, 255, 255, 0.025),
-			0 16px 50px rgba(0, 0, 0, 0.14);
-	}
-	.viewport-canvas::before {
-		position: absolute;
-		inset: 0;
-		background-image: radial-gradient(rgba(131, 157, 186, 0.08) 0.65px, transparent 0.65px);
-		background-size: 16px 16px;
-		content: '';
-		mask-image: radial-gradient(circle at center, black, transparent 74%);
-		pointer-events: none;
-	}
-	canvas {
-		position: absolute;
-		inset: 0;
-		width: 100%;
-		height: 100%;
-		cursor: default;
-		touch-action: none;
-	}
-	.viewport-canvas.orbiting canvas,
-	.viewport-canvas.translating canvas,
-	.viewport-canvas.rotating canvas {
-		cursor: grabbing;
-	}
-	.axis-legend {
-		position: absolute;
-		top: 16px;
-		left: 16px;
-		display: flex;
-		gap: 8px;
-	}
-	.axis-legend > span {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		padding: 5px 7px;
-		border: 1px solid rgba(74, 92, 115, 0.36);
-		border-radius: 6px;
-		background: rgba(13, 20, 29, 0.72);
-		backdrop-filter: blur(8px);
-		font-size: 9px;
-		font-weight: 700;
-	}
-	.axis-legend i {
-		width: 5px;
-		height: 5px;
-		border-radius: 50%;
-		background: currentColor;
-		box-shadow: 0 0 5px currentColor;
-	}
-	.axis-legend small {
-		color: #6f7f93;
-		font-size: 9px;
-		font-weight: 500;
-	}
-	.axis-x {
-		color: #ff777b;
-	}
-	.axis-y {
-		color: #72e7ac;
-	}
-	.axis-z {
-		color: #75bdff;
-	}
-	.coordinate-note {
-		position: absolute;
-		top: 16px;
-		right: 16px;
-		display: flex;
-		align-items: center;
-		gap: 7px;
-		padding: 6px 9px;
-		border: 1px solid rgba(74, 92, 115, 0.3);
-		border-radius: 6px;
-		background: rgba(13, 20, 29, 0.68);
-		color: #718096;
-		font-size: 9px;
-	}
-	.coordinate-note svg {
-		width: 13px;
-		fill: none;
-		stroke: #6a9bc3;
-		stroke-linecap: round;
-		stroke-width: 1.2;
-	}
-	.orbit-hint {
-		position: absolute;
-		bottom: 17px;
-		left: 50%;
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 7px 10px;
-		transform: translateX(-50%);
-		border: 1px solid rgba(68, 84, 105, 0.45);
-		border-radius: 7px;
-		background: rgba(10, 16, 24, 0.78);
-		color: #7d8b9d;
-		font-size: 10px;
-		transition:
-			border-color 120ms ease,
-			color 120ms ease;
-		pointer-events: none;
-	}
-	.orbit-hint.active {
-		border-color: rgba(90, 168, 228, 0.55);
-		color: #a8d9ff;
-	}
-	.volume-warning {
-		position: absolute;
-		right: 17px;
-		bottom: 17px;
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		max-width: 260px;
-		padding: 9px 11px;
-		border: 1px solid rgba(255, 200, 74, 0.48);
-		border-radius: 8px;
-		background: rgba(49, 38, 13, 0.88);
-		box-shadow:
-			0 8px 24px rgba(0, 0, 0, 0.24),
-			inset 0 1px rgba(255, 226, 154, 0.06);
-		color: #ffc84a;
-		backdrop-filter: blur(8px);
-		cursor: pointer;
-		text-align: left;
-		transition:
-			border-color 120ms ease,
-			background 120ms ease,
-			box-shadow 120ms ease;
-	}
-	.volume-warning:hover {
-		border-color: rgba(255, 210, 92, 0.72);
-		background: rgba(63, 48, 16, 0.94);
-	}
-	.volume-warning:focus-visible {
-		outline: 2px solid #ffd46d;
-		outline-offset: 3px;
-	}
-	.volume-warning svg {
-		width: 22px;
-		flex: 0 0 auto;
-		fill: rgba(255, 200, 74, 0.1);
-		stroke: currentColor;
-		stroke-linecap: round;
-		stroke-linejoin: round;
-		stroke-width: 1.6;
-	}
-	.volume-warning div {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-	}
-	.volume-warning strong {
-		font-size: 10px;
-		font-weight: 700;
-		letter-spacing: 0.02em;
-		text-transform: uppercase;
-	}
-	.volume-warning span {
-		color: #d8b867;
-		font-size: 9px;
-		line-height: 1.35;
-	}
-	.mouse-icon {
-		position: relative;
-		display: inline-block;
-		width: 12px;
-		height: 17px;
-		border: 1px solid currentColor;
-		border-radius: 7px;
-	}
-	.mouse-icon i {
-		position: absolute;
-		top: 2px;
-		left: 50%;
-		width: 2px;
-		height: 5px;
-		transform: translateX(-50%);
-		border-radius: 2px;
-		background: currentColor;
 	}
 	.properties {
 		display: grid;
@@ -979,6 +464,46 @@
 	.model-rotation span {
 		background: #a99af1;
 		box-shadow: 0 0 6px rgba(169, 154, 241, 0.72);
+	}
+	.support-mode-summary {
+		padding: 12px;
+		border: 1px solid rgba(87, 220, 139, 0.27);
+		border-radius: 8px;
+		background: rgba(23, 75, 44, 0.14);
+	}
+	.support-mode-heading {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		color: #8ed9ab;
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+	}
+	.support-mode-heading span {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: #57dc8b;
+		box-shadow: 0 0 7px rgba(87, 220, 139, 0.72);
+	}
+	.support-mode-summary p {
+		margin: 9px 0 13px;
+		color: #718d7d;
+		font-size: 10px;
+		line-height: 1.45;
+	}
+	.support-mode-summary strong {
+		color: #b9f0ce;
+		font-size: 22px;
+		font-weight: 650;
+		font-variant-numeric: tabular-nums;
+	}
+	.support-mode-summary small {
+		margin-left: 6px;
+		color: #6e917b;
+		font-size: 9px;
 	}
 	.model-details {
 		display: grid;
@@ -1074,36 +599,12 @@
 		font-size: 9px;
 	}
 	@media (max-width: 820px) {
-		.workflow,
-		.local-badge,
-		.coordinate-note {
-			display: none;
-		}
-		.topbar {
-			grid-template-columns: 1fr auto;
-		}
 		.workspace {
 			grid-template-columns: 1fr;
 			height: calc(100vh - 68px);
 		}
 		.properties {
 			display: none;
-		}
-	}
-	@media (max-width: 520px) {
-		.topbar {
-			padding: 0 14px;
-		}
-		.viewport-panel {
-			padding: 14px;
-		}
-		.axis-legend small {
-			display: none;
-		}
-		.volume-warning {
-			right: 12px;
-			bottom: 54px;
-			max-width: calc(100% - 24px);
 		}
 	}
 </style>

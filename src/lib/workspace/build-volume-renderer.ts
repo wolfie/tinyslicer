@@ -33,6 +33,11 @@ import {
 
 import { TINYMAKER_PROFILE } from '$lib/printer/tinymaker';
 import type { Bounds3, ImportedStlModel, Point3 } from '$lib/workspace/stl-importer';
+import {
+	SUPPORT_MARKER_RADIUS_MM,
+	type ModelSurfaceHit,
+	type SupportMarker
+} from '$lib/workspace/supports';
 
 export type ModelTranslation = Point3;
 
@@ -46,6 +51,8 @@ export type ModelRotation = {
 export type ModelInteraction =
 	{ kind: 'translation' } | { kind: 'rotation'; axis: keyof ModelTranslation };
 
+export type BuildVolumeInteractionMode = 'transform-model' | 'place-supports' | 'readonly';
+
 export type BuildVolumeRenderState = {
 	cameraYaw: number;
 	cameraPitch: number;
@@ -55,6 +62,8 @@ export type BuildVolumeRenderState = {
 	model: ImportedStlModel | null;
 	modelTranslation: ModelTranslation;
 	modelRotation: ModelRotation;
+	interactionMode: BuildVolumeInteractionMode;
+	supports: readonly SupportMarker[];
 };
 
 const BUILD_VOLUME = TINYMAKER_PROFILE.buildVolume;
@@ -400,6 +409,17 @@ class BuildVolumeViewport {
 	});
 	#modelMesh: Mesh | null = null;
 	#outsideModelMesh: Mesh | null = null;
+	#supportGroup = new Group();
+	#supportGeometry = new SphereGeometry(SUPPORT_MARKER_RADIUS_MM, 20, 14);
+	#supportMaterial = new MeshStandardMaterial({
+		color: 0x57dc8b,
+		emissive: 0x143c24,
+		emissiveIntensity: 0.45,
+		roughness: 0.48,
+		metalness: 0.02
+	});
+	#supportMeshes = new Map<string, Mesh<SphereGeometry, MeshStandardMaterial>>();
+	#currentSupports: readonly SupportMarker[] = [];
 	#translationArrows: TranslationArrow[] = [];
 	#translationArrowHitTargets: TranslationArrowPlane[] = [];
 	#arrowGeometry = new PlaneGeometry(ARROW_LENGTH, ARROW_WIDTH);
@@ -409,6 +429,7 @@ class BuildVolumeViewport {
 	#currentModel: ImportedStlModel | null = null;
 	#currentTranslation: ModelTranslation = ZERO_TRANSLATION;
 	#currentRotation: ModelRotation = IDENTITY_MODEL_ROTATION;
+	#interactionMode: BuildVolumeInteractionMode = 'readonly';
 	#modelCenter = new Vector3();
 	#rotationRingRadius = MIN_ROTATION_RING_RADIUS;
 	#activeModelDrag: ActiveModelDrag | null = null;
@@ -431,6 +452,7 @@ class BuildVolumeViewport {
 		this.#renderer.localClippingEnabled = true;
 		this.#camera.up.set(0, 0, 1);
 		this.#scene.add(this.#createBuildVolume());
+		this.#scene.add(this.#supportGroup);
 		this.#arrowTexture = this.#createArrowTexture();
 		this.#createTranslationArrows();
 		this.#createRotationRings();
@@ -453,7 +475,9 @@ class BuildVolumeViewport {
 		onRotationChange: (rotation: ModelRotation) => void,
 		onInteractionChange: (interaction: ModelInteraction | null) => void
 	): boolean {
-		if (event.button !== 0 || !this.#modelMesh) return false;
+		if (this.#interactionMode !== 'transform-model' || event.button !== 0 || !this.#modelMesh) {
+			return false;
+		}
 		this.#setPointer(event);
 
 		const ringHit = this.#raycaster.intersectObjects(this.#rotationRingHitTargets, false)[0];
@@ -513,6 +537,23 @@ class BuildVolumeViewport {
 		};
 		onInteractionChange({ kind: 'translation' });
 		return true;
+	}
+
+	pickModelSurface(event: PointerEvent): ModelSurfaceHit | null {
+		if (this.#interactionMode !== 'place-supports' || event.button !== 0 || !this.#modelMesh) {
+			return null;
+		}
+
+		this.#setPointer(event);
+		const hit = this.#raycaster.intersectObject(this.#modelMesh, false)[0];
+		if (!hit) return null;
+
+		const normal = hit.face?.normal.clone() ?? new Vector3(0, 0, 1);
+		normal.transformDirection(this.#modelMesh.matrixWorld).normalize();
+		return {
+			position: { x: hit.point.x, y: hit.point.y, z: hit.point.z },
+			normal: { x: normal.x, y: normal.y, z: normal.z }
+		};
 	}
 
 	updateModelInteraction(event: PointerEvent): boolean {
@@ -624,8 +665,12 @@ class BuildVolumeViewport {
 	dispose() {
 		if (this.#animationFrame !== null) cancelAnimationFrame(this.#animationFrame);
 		this.#cancelModelDrag();
-		const geometries = new Set<BufferGeometry>();
-		const materials = new Set<Material>([this.#modelMaterial, this.#outsideModelMaterial]);
+		const geometries = new Set<BufferGeometry>([this.#supportGeometry]);
+		const materials = new Set<Material>([
+			this.#modelMaterial,
+			this.#outsideModelMaterial,
+			this.#supportMaterial
+		]);
 		this.#scene.traverse((object) => {
 			if (object instanceof Mesh || object instanceof Line) {
 				geometries.add(object.geometry);
@@ -646,6 +691,8 @@ class BuildVolumeViewport {
 		this.#resize(state.width, state.height, state.dpr);
 		this.#setModel(state.model);
 		this.#setModelTransform(state.modelTranslation, state.modelRotation);
+		this.#setInteractionMode(state.interactionMode);
+		this.#setSupports(state.supports);
 
 		this.#camera.position.set(
 			CAMERA_TARGET.x + CAMERA_DISTANCE * Math.cos(state.cameraPitch) * Math.cos(state.cameraYaw),
@@ -729,6 +776,40 @@ class BuildVolumeViewport {
 		if (this.#outsideModelMesh) {
 			this.#outsideModelMesh.position.copy(position);
 			this.#outsideModelMesh.quaternion.copy(quaternion);
+		}
+	}
+
+	#setInteractionMode(mode: BuildVolumeInteractionMode) {
+		if (mode === this.#interactionMode) return;
+		this.#interactionMode = mode;
+		if (mode !== 'transform-model') {
+			this.#cancelModelDrag();
+			for (const arrow of this.#translationArrows) arrow.group.visible = false;
+			for (const ring of this.#rotationRings) ring.group.visible = false;
+		}
+	}
+
+	#setSupports(supports: readonly SupportMarker[]) {
+		if (supports === this.#currentSupports) return;
+		this.#currentSupports = supports;
+		const currentIds = new Set(supports.map((support) => support.id));
+
+		for (const [id, mesh] of this.#supportMeshes) {
+			if (currentIds.has(id)) continue;
+			this.#supportGroup.remove(mesh);
+			this.#supportMeshes.delete(id);
+		}
+
+		for (const support of supports) {
+			let mesh = this.#supportMeshes.get(support.id);
+			if (!mesh) {
+				mesh = new Mesh(this.#supportGeometry, this.#supportMaterial);
+				mesh.userData.supportId = support.id;
+				mesh.renderOrder = 3;
+				this.#supportMeshes.set(support.id, mesh);
+				this.#supportGroup.add(mesh);
+			}
+			mesh.position.set(support.position.x, support.position.y, support.position.z);
 		}
 	}
 
@@ -851,7 +932,10 @@ class BuildVolumeViewport {
 	}
 
 	#updateTranslationArrows() {
-		if (!this.#currentModel) return;
+		if (!this.#currentModel || this.#interactionMode !== 'transform-model') {
+			for (const arrow of this.#translationArrows) arrow.group.visible = false;
+			return;
+		}
 		const bounds = transformModelBounds(
 			this.#currentModel.bounds,
 			this.#currentTranslation,
@@ -890,7 +974,10 @@ class BuildVolumeViewport {
 	}
 
 	#updateRotationRings() {
-		if (!this.#currentModel) return;
+		if (!this.#currentModel || this.#interactionMode !== 'transform-model') {
+			for (const ring of this.#rotationRings) ring.group.visible = false;
+			return;
+		}
 		const center = this.#modelCenter
 			.clone()
 			.add(
@@ -1056,6 +1143,10 @@ export function startModelTransform(
 		onRotationChange,
 		onInteractionChange
 	);
+}
+
+export function pickModelSurface(event: PointerEvent): ModelSurfaceHit | null {
+	return getViewport(event.currentTarget as HTMLCanvasElement).pickModelSurface(event);
 }
 
 export function updateModelTransform(event: PointerEvent): boolean {
