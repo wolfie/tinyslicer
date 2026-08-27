@@ -48,10 +48,11 @@ describe('workflow UI', () => {
 			modelRotation: { x: 0, y: 0, z: 0, w: 1 },
 			transformedModelBounds: model.bounds,
 			interactionMode: 'transform-model' as const,
-			supports: [],
+			supportPointCount: 0,
+			supportStructures: [],
 			onTranslationChange: noop,
 			onRotationChange: noop,
-			onSupportPlaced: noop,
+			onSupportPointPlaced: noop,
 			onEnterSupports: noop,
 			onBackToPrepare: noop
 		};
@@ -88,10 +89,11 @@ describe('workflow UI', () => {
 				modelOutsideBuildVolume: false,
 				canEnterSupports: true,
 				interactionMode: 'place-supports',
-				supports: [],
+				supportPointCount: 0,
+				supportStructures: [],
 				onTranslationChange: noop,
 				onRotationChange: noop,
-				onSupportPlaced: noop,
+				onSupportPointPlaced: noop,
 				onEnterSupports: noop,
 				onBackToPrepare: noop
 			}

@@ -17,7 +17,7 @@
 	import { CanvasMetrics } from './canvas-metrics.svelte';
 	import { OrbitCamera } from './orbit-camera.svelte';
 	import type { Bounds3, ImportedStlModel } from './stl-importer';
-	import type { ModelSurfaceHit, SupportMarker } from './supports';
+	import type { ModelSurfaceHit, SupportStructure } from './supports';
 
 	type Props = {
 		model: ImportedStlModel | null;
@@ -27,10 +27,11 @@
 		modelOutsideBuildVolume: boolean;
 		canEnterSupports: boolean;
 		interactionMode: BuildVolumeInteractionMode;
-		supports: readonly SupportMarker[];
+		supportPointCount: number;
+		supportStructures: readonly SupportStructure[];
 		onTranslationChange: (translation: ModelTranslation) => void;
 		onRotationChange: (rotation: ModelRotation) => void;
-		onSupportPlaced: (hit: ModelSurfaceHit) => void;
+		onSupportPointPlaced: (hit: ModelSurfaceHit) => void;
 		onEnterSupports: () => void;
 		onBackToPrepare: () => void;
 	};
@@ -43,10 +44,11 @@
 		modelOutsideBuildVolume,
 		canEnterSupports,
 		interactionMode,
-		supports,
+		supportPointCount,
+		supportStructures,
 		onTranslationChange,
 		onRotationChange,
-		onSupportPlaced,
+		onSupportPointPlaced,
 		onEnterSupports,
 		onBackToPrepare
 	}: Props = $props();
@@ -67,7 +69,7 @@
 			const hit = pickModelSurface(event);
 			if (hit) {
 				event.preventDefault();
-				onSupportPlaced(hit);
+				onSupportPointPlaced(hit);
 			}
 			return;
 		}
@@ -141,7 +143,7 @@
 				modelTranslation,
 				modelRotation,
 				interactionMode,
-				supports
+				supportStructures
 			})}
 			onpointerdown={handlePointerDown}
 			onpointermove={handlePointerMove}
@@ -208,7 +210,7 @@
 		{/if}
 		{#if placingSupports}
 			<p class="support-count" aria-live="polite">
-				<span></span>{supports.length} support {supports.length === 1 ? 'point' : 'points'} placed
+				<span></span>{supportPointCount} support {supportPointCount === 1 ? 'point' : 'points'} placed
 			</p>
 		{/if}
 	</div>

@@ -45,7 +45,7 @@ describe('workspace workflow', () => {
 		expect(workspace.interactionMode).toBe('place-supports');
 	});
 
-	it('stores independently identified world-space support hits', () => {
+	it('stores independently identified world-space support points', () => {
 		const workspace = new WorkspaceState();
 		workspace.setModel(modelWithinBuildVolume());
 		workspace.requestStep('supports');
@@ -54,15 +54,33 @@ describe('workspace workflow', () => {
 			normal: { x: 0, y: 0, z: 1 }
 		};
 
-		expect(workspace.addSupport(hit)).toBe(true);
+		expect(workspace.addSupportPoint(hit)).toBe(true);
 		hit.position.x = 99;
 
-		expect(workspace.supports).toEqual([
+		expect(workspace.supportPoints).toEqual([
 			{
-				id: 'support-1',
+				id: 'support-point-1',
 				position: { x: 12, y: 14, z: 5 },
 				normal: { x: 0, y: 0, z: 1 }
 			}
+		]);
+	});
+
+	it('keeps unresolved support points separate from generated structures', () => {
+		const workspace = new WorkspaceState();
+		workspace.setModel(modelWithinBuildVolume());
+		workspace.requestStep('supports');
+
+		expect(
+			workspace.addSupportPoint({
+				position: { x: 12, y: 14, z: 0.5 },
+				normal: { x: 0, y: 0, z: -1 }
+			})
+		).toBe(true);
+		expect(workspace.supportPoints).toHaveLength(1);
+		expect(workspace.supportPlan.structures).toEqual([]);
+		expect(workspace.supportPlan.unresolvedPoints).toEqual([
+			{ pointId: 'support-point-1', reason: 'insufficient-height' }
 		]);
 	});
 
@@ -70,7 +88,7 @@ describe('workspace workflow', () => {
 		const workspace = new WorkspaceState();
 		workspace.setModel(modelWithinBuildVolume());
 		workspace.requestStep('supports');
-		workspace.addSupport({
+		workspace.addSupportPoint({
 			position: { x: 12, y: 14, z: 5 },
 			normal: { x: 0, y: 0, z: 1 }
 		});
@@ -81,12 +99,12 @@ describe('workspace workflow', () => {
 
 		workspace.cancelDiscardSupports();
 		expect(workspace.step).toBe('supports');
-		expect(workspace.supports).toHaveLength(1);
+		expect(workspace.supportPoints).toHaveLength(1);
 
 		workspace.requestStep('prepare');
 		workspace.confirmDiscardSupports();
 		expect(workspace.step).toBe('prepare');
-		expect(workspace.supports).toEqual([]);
+		expect(workspace.supportPoints).toEqual([]);
 	});
 
 	it('returns directly to prepare when no supports were placed', () => {
@@ -103,7 +121,7 @@ describe('workspace workflow', () => {
 		const workspace = new WorkspaceState();
 		workspace.setModel(modelWithinBuildVolume());
 		workspace.requestStep('supports');
-		workspace.addSupport({
+		workspace.addSupportPoint({
 			position: { x: 12, y: 14, z: 5 },
 			normal: { x: 0, y: 0, z: 1 }
 		});
@@ -111,7 +129,7 @@ describe('workspace workflow', () => {
 		workspace.setModel({ ...modelWithinBuildVolume(), name: 'replacement.stl' });
 
 		expect(workspace.step).toBe('prepare');
-		expect(workspace.supports).toEqual([]);
+		expect(workspace.supportPoints).toEqual([]);
 		expect(workspace.model?.name).toBe('replacement.stl');
 	});
 });

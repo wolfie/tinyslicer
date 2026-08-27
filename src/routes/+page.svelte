@@ -135,10 +135,11 @@
 			modelOutsideBuildVolume={workspace.modelOutsideBuildVolume}
 			canEnterSupports={workspace.canEnterSupports}
 			interactionMode={workspace.interactionMode}
-			supports={workspace.supports}
+			supportPointCount={workspace.supportPoints.length}
+			supportStructures={workspace.supportPlan.structures}
 			onTranslationChange={workspace.setModelTranslation}
 			onRotationChange={workspace.setModelRotation}
-			onSupportPlaced={(hit) => workspace.addSupport(hit)}
+			onSupportPointPlaced={(hit) => workspace.addSupportPoint(hit)}
 			onEnterSupports={() => requestStep('supports')}
 			onBackToPrepare={() => requestStep('prepare')}
 		/>
@@ -169,8 +170,10 @@
 							<div class="support-mode-summary">
 								<div class="support-mode-heading"><span></span>Support placement</div>
 								<p>Click anywhere on the model surface to add a support point.</p>
-								<strong>{workspace.supports.length}</strong>
-								<small>{workspace.supports.length === 1 ? 'point placed' : 'points placed'}</small>
+								<strong>{workspace.supportPoints.length}</strong>
+								<small
+									>{workspace.supportPoints.length === 1 ? 'point placed' : 'points placed'}</small
+								>
 							</div>
 						{/if}
 						<dl class="model-details">
@@ -260,7 +263,7 @@
 	</main>
 	<DiscardSupportsDialog
 		open={workspace.discardSupportsDialogOpen}
-		supportCount={workspace.supports.length}
+		supportCount={workspace.supportPoints.length}
 		onCancel={workspace.cancelDiscardSupports}
 		onConfirm={workspace.confirmDiscardSupports}
 	/>

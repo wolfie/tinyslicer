@@ -9,7 +9,7 @@ import {
 	type ModelTranslation
 } from './build-volume-renderer';
 import type { ImportedStlModel } from './stl-importer';
-import type { ModelSurfaceHit, SupportMarker } from './supports';
+import { generateSupportPlan, type ModelSurfaceHit, type SupportPoint } from './supports';
 
 export type WorkflowStep = 'prepare' | 'supports' | 'preview' | 'export';
 
@@ -17,9 +17,10 @@ export class WorkspaceState {
 	model = $state.raw<ImportedStlModel | null>(null);
 	modelTranslation = $state<ModelTranslation>({ x: 0, y: 0, z: 0 });
 	modelRotation = $state<ModelRotation>({ ...IDENTITY_MODEL_ROTATION });
-	supports = $state.raw<SupportMarker[]>([]);
+	supportPoints = $state.raw<SupportPoint[]>([]);
 	step = $state<WorkflowStep>('prepare');
 	discardSupportsDialogOpen = $state(false);
+	supportPlan = $derived(generateSupportPlan(this.supportPoints));
 
 	rotatedModelBounds = $derived(
 		this.model
@@ -53,12 +54,12 @@ export class WorkspaceState {
 				: 'readonly'
 	);
 
-	#nextSupportId = 1;
+	#nextSupportPointId = 1;
 
 	setModel(model: ImportedStlModel) {
 		this.modelTranslation = { x: 0, y: 0, z: 0 };
 		this.modelRotation = { ...IDENTITY_MODEL_ROTATION };
-		this.supports = [];
+		this.supportPoints = [];
 		this.discardSupportsDialogOpen = false;
 		this.step = 'prepare';
 		this.model = model;
@@ -84,7 +85,7 @@ export class WorkspaceState {
 		if (step === this.step) return true;
 		if (!this.canNavigateTo(step)) return false;
 
-		if (step === 'prepare' && this.step === 'supports' && this.supports.length > 0) {
+		if (step === 'prepare' && this.step === 'supports' && this.supportPoints.length > 0) {
 			this.discardSupportsDialogOpen = true;
 			return false;
 		}
@@ -93,12 +94,12 @@ export class WorkspaceState {
 		return true;
 	}
 
-	addSupport(hit: ModelSurfaceHit): boolean {
+	addSupportPoint(hit: ModelSurfaceHit): boolean {
 		if (this.step !== 'supports' || !this.canEnterSupports) return false;
-		this.supports = [
-			...this.supports,
+		this.supportPoints = [
+			...this.supportPoints,
 			{
-				id: `support-${this.#nextSupportId++}`,
+				id: `support-point-${this.#nextSupportPointId++}`,
 				position: { ...hit.position },
 				normal: { ...hit.normal }
 			}
@@ -111,7 +112,7 @@ export class WorkspaceState {
 	};
 
 	confirmDiscardSupports = () => {
-		this.supports = [];
+		this.supportPoints = [];
 		this.discardSupportsDialogOpen = false;
 		this.step = 'prepare';
 	};

@@ -34,9 +34,9 @@ import {
 import { TINYMAKER_PROFILE } from '$lib/printer/tinymaker';
 import type { Bounds3, ImportedStlModel, Point3 } from '$lib/workspace/stl-importer';
 import {
-	SUPPORT_MARKER_RADIUS_MM,
 	type ModelSurfaceHit,
-	type SupportMarker
+	type SupportStructure,
+	type SupportStructurePart
 } from '$lib/workspace/supports';
 
 export type ModelTranslation = Point3;
@@ -63,7 +63,7 @@ export type BuildVolumeRenderState = {
 	modelTranslation: ModelTranslation;
 	modelRotation: ModelRotation;
 	interactionMode: BuildVolumeInteractionMode;
-	supports: readonly SupportMarker[];
+	supportStructures: readonly SupportStructure[];
 };
 
 const BUILD_VOLUME = TINYMAKER_PROFILE.buildVolume;
@@ -92,6 +92,7 @@ const ROTATION_RING_OUTER_RADIUS = 1;
 const ROTATION_RING_SEGMENTS = 96;
 const BUILD_VOLUME_BOUNDS_EPSILON = 1e-6;
 const ZERO_TRANSLATION: ModelTranslation = { x: 0, y: 0, z: 0 };
+const CYLINDER_AXIS = new Vector3(0, 1, 0);
 export const IDENTITY_MODEL_ROTATION: ModelRotation = { x: 0, y: 0, z: 0, w: 1 };
 
 type TranslationDirection = {
@@ -410,7 +411,6 @@ class BuildVolumeViewport {
 	#modelMesh: Mesh | null = null;
 	#outsideModelMesh: Mesh | null = null;
 	#supportGroup = new Group();
-	#supportGeometry = new SphereGeometry(SUPPORT_MARKER_RADIUS_MM, 20, 14);
 	#supportMaterial = new MeshStandardMaterial({
 		color: 0x57dc8b,
 		emissive: 0x143c24,
@@ -418,8 +418,9 @@ class BuildVolumeViewport {
 		roughness: 0.48,
 		metalness: 0.02
 	});
-	#supportMeshes = new Map<string, Mesh<SphereGeometry, MeshStandardMaterial>>();
-	#currentSupports: readonly SupportMarker[] = [];
+	#supportGeometryCache = new Map<string, BufferGeometry>();
+	#supportStructureGroups = new Map<string, Group>();
+	#currentSupportStructures: readonly SupportStructure[] = [];
 	#translationArrows: TranslationArrow[] = [];
 	#translationArrowHitTargets: TranslationArrowPlane[] = [];
 	#arrowGeometry = new PlaneGeometry(ARROW_LENGTH, ARROW_WIDTH);
@@ -665,7 +666,7 @@ class BuildVolumeViewport {
 	dispose() {
 		if (this.#animationFrame !== null) cancelAnimationFrame(this.#animationFrame);
 		this.#cancelModelDrag();
-		const geometries = new Set<BufferGeometry>([this.#supportGeometry]);
+		const geometries = new Set<BufferGeometry>(this.#supportGeometryCache.values());
 		const materials = new Set<Material>([
 			this.#modelMaterial,
 			this.#outsideModelMaterial,
@@ -692,7 +693,7 @@ class BuildVolumeViewport {
 		this.#setModel(state.model);
 		this.#setModelTransform(state.modelTranslation, state.modelRotation);
 		this.#setInteractionMode(state.interactionMode);
-		this.#setSupports(state.supports);
+		this.#setSupportStructures(state.supportStructures);
 
 		this.#camera.position.set(
 			CAMERA_TARGET.x + CAMERA_DISTANCE * Math.cos(state.cameraPitch) * Math.cos(state.cameraYaw),
@@ -789,28 +790,88 @@ class BuildVolumeViewport {
 		}
 	}
 
-	#setSupports(supports: readonly SupportMarker[]) {
-		if (supports === this.#currentSupports) return;
-		this.#currentSupports = supports;
-		const currentIds = new Set(supports.map((support) => support.id));
+	#setSupportStructures(structures: readonly SupportStructure[]) {
+		if (structures === this.#currentSupportStructures) return;
+		this.#currentSupportStructures = structures;
+		const currentIds = new Set(structures.map((structure) => structure.id));
 
-		for (const [id, mesh] of this.#supportMeshes) {
+		for (const [id, group] of this.#supportStructureGroups) {
 			if (currentIds.has(id)) continue;
-			this.#supportGroup.remove(mesh);
-			this.#supportMeshes.delete(id);
+			this.#supportGroup.remove(group);
+			this.#supportStructureGroups.delete(id);
 		}
 
-		for (const support of supports) {
-			let mesh = this.#supportMeshes.get(support.id);
-			if (!mesh) {
-				mesh = new Mesh(this.#supportGeometry, this.#supportMaterial);
-				mesh.userData.supportId = support.id;
-				mesh.renderOrder = 3;
-				this.#supportMeshes.set(support.id, mesh);
-				this.#supportGroup.add(mesh);
+		for (const structure of structures) {
+			let group = this.#supportStructureGroups.get(structure.id);
+			if (!group) {
+				group = new Group();
+				group.userData.supportStructureId = structure.id;
+				this.#supportStructureGroups.set(structure.id, group);
+				this.#supportGroup.add(group);
 			}
-			mesh.position.set(support.position.x, support.position.y, support.position.z);
+			this.#updateSupportStructure(group, structure);
 		}
+	}
+
+	#updateSupportStructure(group: Group, structure: SupportStructure) {
+		while (group.children.length > structure.parts.length) {
+			group.remove(group.children.at(-1)!);
+		}
+
+		for (const [index, structurePart] of structure.parts.entries()) {
+			let mesh = group.children[index] as Mesh<BufferGeometry, MeshStandardMaterial> | undefined;
+			if (!mesh) {
+				mesh = new Mesh(this.#supportGeometry(structurePart), this.#supportMaterial);
+				mesh.renderOrder = 3;
+				group.add(mesh);
+			} else {
+				mesh.geometry = this.#supportGeometry(structurePart);
+			}
+			mesh.userData.supportStructureId = structure.id;
+			mesh.userData.supportPointIds = structure.pointIds;
+			mesh.userData.supportPart = structurePart.kind;
+			this.#positionSupportPart(mesh, structurePart);
+		}
+	}
+
+	#supportGeometry(part: SupportStructurePart): BufferGeometry {
+		const radialSegments = part.kind === 'foot' ? 32 : 24;
+		const key =
+			part.kind === 'junction'
+				? `sphere:${part.diameter}`
+				: `frustum:${part.startDiameter}:${part.endDiameter}:${radialSegments}`;
+		let geometry = this.#supportGeometryCache.get(key);
+		if (!geometry) {
+			geometry =
+				part.kind === 'junction'
+					? new SphereGeometry(part.diameter / 2, 24, 16)
+					: new CylinderGeometry(part.endDiameter / 2, part.startDiameter / 2, 1, radialSegments);
+			this.#supportGeometryCache.set(key, geometry);
+		}
+		return geometry;
+	}
+
+	#positionSupportPart(
+		mesh: Mesh<BufferGeometry, MeshStandardMaterial>,
+		part: SupportStructurePart
+	) {
+		if (part.kind === 'junction') {
+			mesh.position.set(part.center.x, part.center.y, part.center.z);
+			mesh.quaternion.identity();
+			mesh.scale.set(1, 1, 1);
+			return;
+		}
+
+		const start = new Vector3(part.start.x, part.start.y, part.start.z);
+		const direction = new Vector3(
+			part.end.x - part.start.x,
+			part.end.y - part.start.y,
+			part.end.z - part.start.z
+		);
+		const length = direction.length();
+		mesh.position.copy(start).addScaledVector(direction, 0.5);
+		mesh.quaternion.setFromUnitVectors(CYLINDER_AXIS, direction.normalize());
+		mesh.scale.set(1, length, 1);
 	}
 
 	#setPointer(event: PointerEvent) {
