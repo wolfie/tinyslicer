@@ -25,6 +25,10 @@ export {
 	transformModelGeometryBounds,
 	translateModelBounds
 } from './build-volume-renderer/model-transform';
+export {
+	SUPPORT_MARKER_RADIUS_MM,
+	SUPPORT_MARKER_SURFACE_OFFSET_MM
+} from './build-volume-renderer/support-marker-renderer';
 export { findModelSurfaceBelow } from './build-volume-renderer/support-picking';
 export {
 	createRotationRingGeometry,
@@ -82,6 +86,10 @@ export function startModelTransform(
 
 export function pickModelSurface(event: PointerEvent): ModelSurfaceHit | null {
 	return getViewport(event.currentTarget as HTMLCanvasElement).pickModelSurface(event);
+}
+
+export function pickSupportPoint(event: PointerEvent): string | null {
+	return getViewport(event.currentTarget as HTMLCanvasElement).pickSupportPoint(event);
 }
 
 export function updateModelTransform(event: PointerEvent): boolean {

@@ -1,5 +1,5 @@
 import type { ImportedStlModel, Point3 } from '../stl-importer';
-import type { SupportStructure } from '../supports';
+import type { SupportPoint, SupportStructure } from '../supports';
 
 export type ModelTranslation = Point3;
 
@@ -25,5 +25,6 @@ export type BuildVolumeRenderState = {
 	modelTranslation: ModelTranslation;
 	modelRotation: ModelRotation;
 	interactionMode: BuildVolumeInteractionMode;
+	supportPoints: readonly SupportPoint[];
 	supportStructures: readonly SupportStructure[];
 };

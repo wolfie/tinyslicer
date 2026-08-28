@@ -18,7 +18,7 @@
 	import { CanvasMetrics } from './canvas-metrics.svelte';
 	import { OrbitCamera } from './orbit-camera.svelte';
 	import type { Bounds3, ImportedStlModel } from './stl-importer';
-	import type { ModelSurfaceHit, SupportStructure } from './supports';
+	import type { ModelSurfaceHit, SupportPoint, SupportStructure } from './supports';
 
 	type Props = {
 		model: ImportedStlModel | null;
@@ -30,6 +30,7 @@
 		canEnterSupports: boolean;
 		interactionMode: BuildVolumeInteractionMode;
 		supportPointCount: number;
+		supportPoints: readonly SupportPoint[];
 		supportStructures: readonly SupportStructure[];
 		onTranslationChange: (translation: ModelTranslation) => void;
 		onRotationChange: (rotation: ModelRotation) => void;
@@ -48,6 +49,7 @@
 		canEnterSupports,
 		interactionMode,
 		supportPointCount,
+		supportPoints,
 		supportStructures,
 		onTranslationChange,
 		onRotationChange,
@@ -146,6 +148,7 @@
 				modelTranslation,
 				modelRotation,
 				interactionMode,
+				supportPoints,
 				supportStructures
 			})}
 			onpointerdown={handlePointerDown}

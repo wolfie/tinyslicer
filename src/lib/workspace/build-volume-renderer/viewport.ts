@@ -13,6 +13,7 @@ import type { ModelSurfaceHit } from '../supports';
 import { BuildVolumeScene } from './build-volume-scene';
 import { ModelInteractionController } from './model-interaction';
 import { RenderedModel } from './rendered-model';
+import { SupportMarkerRenderer } from './support-marker-renderer';
 import { SupportRenderer } from './support-renderer';
 import { TransformGizmo } from './transform-gizmo';
 import type {
@@ -33,6 +34,7 @@ export class BuildVolumeViewport {
 	#buildVolumeScene = new BuildVolumeScene();
 	#model: RenderedModel;
 	#supports: SupportRenderer;
+	#supportMarkers: SupportMarkerRenderer;
 	#gizmo: TransformGizmo;
 	#interactions: ModelInteractionController;
 	#pendingState: BuildVolumeRenderState | null = null;
@@ -56,12 +58,14 @@ export class BuildVolumeViewport {
 
 		this.#model = new RenderedModel(this.#scene);
 		this.#supports = new SupportRenderer(this.#scene);
+		this.#supportMarkers = new SupportMarkerRenderer(this.#scene);
 		this.#gizmo = new TransformGizmo(this.#scene);
 		this.#interactions = new ModelInteractionController(
 			canvas,
 			this.#camera,
 			this.#model,
-			this.#gizmo
+			this.#gizmo,
+			this.#supportMarkers
 		);
 
 		this.#scene.add(new HemisphereLight(0xddeeff, 0x152536, 1.65));
@@ -97,6 +101,10 @@ export class BuildVolumeViewport {
 		return this.#interactions.pickModelSurface(event);
 	}
 
+	pickSupportPoint(event: PointerEvent): string | null {
+		return this.#interactions.pickSupportPoint(event);
+	}
+
 	updateModelInteraction(event: PointerEvent): boolean {
 		return this.#interactions.updateModelInteraction(event);
 	}
@@ -122,6 +130,7 @@ export class BuildVolumeViewport {
 		this.#interactions.cancel();
 		this.#model.dispose();
 		this.#supports.dispose();
+		this.#supportMarkers.dispose();
 		this.#gizmo.dispose();
 		this.#scene.remove(this.#buildVolumeScene.group);
 		this.#buildVolumeScene.dispose();
@@ -136,6 +145,8 @@ export class BuildVolumeViewport {
 		this.#model.setSupportRiskVisible(state.interactionMode === 'place-supports');
 		this.#interactions.setInteractionMode(state.interactionMode);
 		this.#supports.setStructures(state.supportStructures);
+		this.#supportMarkers.setPoints(state.supportPoints);
+		this.#supportMarkers.setVisible(state.interactionMode === 'place-supports');
 		this.#buildVolumeScene.setSupportPlateMarginVisible(
 			state.interactionMode === 'transform-model'
 		);

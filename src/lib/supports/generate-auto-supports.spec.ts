@@ -23,6 +23,17 @@ const SETTINGS: AutoSupportSettings = {
 	maximumSupportPoints: 32
 };
 
+/**
+ * Thin layers so the neck length (1.5 mm) spans several layers: this is what
+ * lets a solid be far enough below a contact to still be flagged as unsupported
+ * while sitting too close to seat a post neck.
+ */
+const FINE_PROFILE: LayerMaskRasterizationProfile = {
+	resolution: { x: 16, y: 16 },
+	buildAreaMm: { x: 16, y: 16 },
+	layerHeightMm: 0.1
+};
+
 type Point = [number, number, number];
 
 function boxPositions(minimum: Point, maximum: Point): number[] {
@@ -69,14 +80,18 @@ function modelFromPositions(positionValues: readonly number[]) {
 	return { positions, bounds };
 }
 
-function generate(positionValues: readonly number[], settings = SETTINGS) {
+function generate(positionValues: readonly number[], settings = SETTINGS, profile = PROFILE) {
 	return generateAutoSupportHits(
 		modelFromPositions(positionValues),
 		ZERO_MODEL_TRANSLATION,
 		IDENTITY_MODEL_ROTATION,
 		settings,
-		PROFILE
+		profile
 	);
+}
+
+function isOverStand(hit: { position: { x: number; y: number } }) {
+	return hit.position.x > 6 && hit.position.x < 10 && hit.position.y > 6 && hit.position.y < 10;
 }
 
 describe('automatic support suggestions', () => {
@@ -120,6 +135,47 @@ describe('automatic support suggestions', () => {
 
 		expect(result.hits.length).toBeGreaterThan(0);
 		expect(result.hits.every((hit) => hit.lowerContactPosition?.z === 3)).toBe(true);
+	});
+
+	it('rejects a contact rather than dropping a plate foot through a solid just below it', () => {
+		// A narrow pillar (top at z = 3) sits 1 mm under a wide cape (underside at
+		// z = 4) — closer than the 1.5 mm neck length, so no post can attach to it.
+		const result = generate(
+			[...boxPositions([6, 6, 2], [10, 10, 3]), ...boxPositions([2, 2, 4], [14, 14, 4.5])],
+			SETTINGS,
+			FINE_PROFILE
+		);
+
+		expect(result.hits.length).toBeGreaterThan(0);
+		// Every surviving contact is out over the free part of the cape and gets a
+		// clean plate foot; none is placed above the pillar.
+		expect(result.hits.some(isOverStand)).toBe(false);
+		expect(result.hits.every((hit) => hit.position.z === 4)).toBe(true);
+		expect(result.hits.every((hit) => hit.lowerContactPosition === undefined)).toBe(true);
+		// The contacts above the pillar were dropped, not routed through it.
+		expect(result.diagnostics.rejectedCandidateCount).toBeGreaterThan(0);
+	});
+
+	it('anchors a post on the nearest solid below instead of reaching past a closer one', () => {
+		// Plate-height base (top z = 0.5), a narrow pillar (top z = 3), then a wide
+		// cape (underside z = 4). The pillar is too close to the cape to anchor to,
+		// and the base is far enough — the post must not skip the pillar to reach it.
+		const result = generate(
+			[
+				...boxPositions([2, 2, 0], [14, 14, 0.5]),
+				...boxPositions([6, 6, 2], [10, 10, 3]),
+				...boxPositions([2, 2, 4], [14, 14, 4.5])
+			],
+			SETTINGS,
+			FINE_PROFILE
+		);
+
+		expect(result.hits.length).toBeGreaterThan(0);
+		expect(result.hits.some(isOverStand)).toBe(false);
+		// Free-cape contacts terminate on the base; nothing terminates below the
+		// pillar's top (z = 3) after passing through it.
+		expect(result.hits.every((hit) => hit.lowerContactPosition?.z === 0.5)).toBe(true);
+		expect(result.diagnostics.rejectedCandidateCount).toBeGreaterThan(0);
 	});
 
 	it('stops at the configured global support limit', () => {

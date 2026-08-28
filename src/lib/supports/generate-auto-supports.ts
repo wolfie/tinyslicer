@@ -5,11 +5,7 @@ import {
 } from '$lib/slicing/model-layer-masks';
 import type { ModelRotation, ModelTranslation } from '$lib/workspace/build-volume-renderer/types';
 import type { ImportedStlModel } from '$lib/workspace/stl-importer';
-import {
-	createPostSupportStructure,
-	SUPPORT_NECK_LENGTH_MM,
-	type ModelSurfaceHit
-} from '$lib/workspace/supports';
+import { createPostSupportStructure, type ModelSurfaceHit } from '$lib/workspace/supports';
 import {
 	analyzeUnsupportedLayer,
 	type BinaryLayerMask,
@@ -101,16 +97,16 @@ function contactForCandidate(
 		y: (pixel.y + 0.5) * rasterizer.pixelPitchMm.y,
 		z: contactInterval.minimumZMm
 	};
-	const neckBaseZ = position.z - SUPPORT_NECK_LENGTH_MM;
-	let lowerContactPosition: ModelSurfaceHit['lowerContactPosition'];
-	for (let index = intervals.length - 1; index >= 0; index -= 1) {
-		const interval = intervals[index];
-		if (interval.maximumZMm >= position.z - GEOMETRY_EPSILON_MM) continue;
-		if (interval.maximumZMm < neckBaseZ - GEOMETRY_EPSILON_MM) {
-			lowerContactPosition = { x: position.x, y: position.y, z: interval.maximumZMm };
-			break;
-		}
-	}
+	// Anchor the post on the nearest solid strictly below the contact, whatever the
+	// clearance. If it sits too close to seat a neck + junction, createPostSupportStructure
+	// rejects the candidate; reaching past it to a deeper anchor (or the plate) would let
+	// the shaft run straight through this solid.
+	const lowerInterval = intervals.findLast(
+		(interval) => interval.maximumZMm < position.z - GEOMETRY_EPSILON_MM
+	);
+	const lowerContactPosition: ModelSurfaceHit['lowerContactPosition'] = lowerInterval
+		? { x: position.x, y: position.y, z: lowerInterval.maximumZMm }
+		: undefined;
 
 	return {
 		position,

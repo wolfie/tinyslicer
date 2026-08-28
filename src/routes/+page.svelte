@@ -137,6 +137,7 @@
 			canEnterSupports={workspace.canEnterSupports}
 			interactionMode={workspace.interactionMode}
 			supportPointCount={workspace.supportPoints.length}
+			supportPoints={workspace.supportPoints}
 			supportStructures={workspace.supportPlan.structures}
 			onTranslationChange={workspace.setModelTranslation}
 			onRotationChange={workspace.setModelRotation}

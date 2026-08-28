@@ -9,6 +9,7 @@ import {
 } from './model-transform';
 import { pickSupportSurface } from './support-picking';
 import type { RenderedModel } from './rendered-model';
+import type { SupportMarkerRenderer } from './support-marker-renderer';
 import type { RotationAxis, TransformGizmo, TranslationDirection } from './transform-gizmo';
 import type {
 	BuildVolumeInteractionMode,
@@ -48,6 +49,7 @@ export class ModelInteractionController {
 	#camera: PerspectiveCamera;
 	#model: RenderedModel;
 	#gizmo: TransformGizmo;
+	#supportMarkers: SupportMarkerRenderer;
 	#raycaster = new Raycaster();
 	#pointer = new Vector2();
 	#interactionMode: BuildVolumeInteractionMode = 'readonly';
@@ -57,12 +59,14 @@ export class ModelInteractionController {
 		canvas: HTMLCanvasElement,
 		camera: PerspectiveCamera,
 		model: RenderedModel,
-		gizmo: TransformGizmo
+		gizmo: TransformGizmo,
+		supportMarkers: SupportMarkerRenderer
 	) {
 		this.#canvas = canvas;
 		this.#camera = camera;
 		this.#model = model;
 		this.#gizmo = gizmo;
+		this.#supportMarkers = supportMarkers;
 	}
 
 	get activeRotationAxis(): keyof ModelTranslation | null {
@@ -154,6 +158,18 @@ export class ModelInteractionController {
 
 		this.#setPointer(event);
 		return pickSupportSurface(modelMesh, this.#raycaster);
+	}
+
+	/**
+	 * Returns the id of the support marker under the pointer, if any. The hook
+	 * for upcoming drag-move / select-and-delete editing of placed supports.
+	 */
+	pickSupportPoint(event: PointerEvent): string | null {
+		if (this.#interactionMode !== 'place-supports') return null;
+
+		this.#setPointer(event);
+		const hit = this.#raycaster.intersectObjects([...this.#supportMarkers.pickTargets], false)[0];
+		return (hit?.object.userData.supportPointId as string | undefined) ?? null;
 	}
 
 	updateModelInteraction(event: PointerEvent): boolean {
