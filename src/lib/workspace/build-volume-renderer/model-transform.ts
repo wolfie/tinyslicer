@@ -166,3 +166,34 @@ export function isModelOutsideBuildVolume(
 ): boolean {
 	return areBoundsOutsideBuildVolume(transformModelGeometryBounds(model, translation, rotation));
 }
+
+// Candidate spins around Z, tried in this order: no rotation first, then the
+// remaining cardinal turns, then the finer 22.5 degree increments.
+const IN_BOUNDS_Z_ROTATION_SEARCH_DEGREES = [
+	0, 90, 180, 270, 22.5, 45, 67.5, 112.5, 135, 157.5, 202.5, 225, 247.5, 292.5, 315, 337.5
+];
+
+/**
+ * Looks for a rotation around the vertical axis that brings a freshly imported
+ * model fully inside the build volume. Only the XY footprint changes, so this
+ * cannot rescue a model that is simply too tall. Returns the identity rotation
+ * when nothing fits (or when the model already fits without rotating).
+ */
+export function findInBoundsZRotation(
+	model: Pick<ImportedStlModel, 'bounds' | 'positions'>
+): ModelRotation {
+	const axis = new Vector3(0, 0, 1);
+	for (const degrees of IN_BOUNDS_Z_ROTATION_SEARCH_DEGREES) {
+		const quaternion = new Quaternion().setFromAxisAngle(axis, (degrees * Math.PI) / 180);
+		const rotation: ModelRotation = {
+			x: quaternion.x,
+			y: quaternion.y,
+			z: quaternion.z,
+			w: quaternion.w
+		};
+		if (!areBoundsOutsideBuildVolume(transformModelGeometryBounds(model, undefined, rotation))) {
+			return rotation;
+		}
+	}
+	return { ...IDENTITY_MODEL_ROTATION };
+}

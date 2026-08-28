@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { TINYMAKER_PROFILE } from '$lib/printer/tinymaker';
 import type { ImportedStlModel } from '../stl-importer';
 import {
+	findInBoundsZRotation,
 	firstBuildVolumeOverflowDirection,
 	IDENTITY_MODEL_ROTATION,
 	isModelOutsideBuildVolume,
@@ -219,6 +220,45 @@ describe('build volume fit', () => {
 		model.positions = new Float32Array([0, 0, 0, TINYMAKER_PROFILE.buildVolume.x, 0, 0, 0, 10, 10]);
 
 		expect(isModelOutsideBuildVolume(model, { x: -Number.EPSILON, y: 0, z: 0 })).toBe(false);
+	});
+});
+
+describe('initial in-bounds Z rotation search', () => {
+	const buildCenter = {
+		x: TINYMAKER_PROFILE.buildVolume.x / 2,
+		y: TINYMAKER_PROFILE.buildVolume.y / 2
+	};
+
+	it('leaves a model that already fits unrotated', () => {
+		const model = modelWithBounds({ x: 5, y: 5, z: 0 }, { x: 15, y: 15, z: 10 });
+
+		expect(findInBoundsZRotation(model)).toEqual(IDENTITY_MODEL_ROTATION);
+	});
+
+	it('turns a bar that overflows lengthwise a quarter turn to fit', () => {
+		// 35 mm long on Y (build depth is only 30.6 mm), 4 mm wide on X, centred.
+		const model = modelWithBounds(
+			{ x: buildCenter.x - 2, y: buildCenter.y - 17.5, z: 0 },
+			{ x: buildCenter.x + 2, y: buildCenter.y + 17.5, z: 4 }
+		);
+		expect(isModelOutsideBuildVolume(model)).toBe(true);
+
+		const rotation = findInBoundsZRotation(model);
+
+		expect(rotation.x).toBeCloseTo(0);
+		expect(rotation.y).toBeCloseTo(0);
+		expect(Math.abs(rotation.z)).toBeCloseTo(Math.SQRT1_2);
+		expect(rotation.w).toBeCloseTo(Math.SQRT1_2);
+		expect(isModelOutsideBuildVolume(model, undefined, rotation)).toBe(false);
+	});
+
+	it('gives up with the identity rotation when the model is simply too tall', () => {
+		const model = modelWithBounds(
+			{ x: buildCenter.x - 2, y: buildCenter.y - 2, z: 0 },
+			{ x: buildCenter.x + 2, y: buildCenter.y + 2, z: TINYMAKER_PROFILE.buildVolume.z + 5 }
+		);
+
+		expect(findInBoundsZRotation(model)).toEqual(IDENTITY_MODEL_ROTATION);
 	});
 });
 
