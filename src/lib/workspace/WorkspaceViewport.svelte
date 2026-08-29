@@ -19,6 +19,7 @@
 	import { OrbitCamera } from './orbit-camera.svelte';
 	import type { Bounds3, ImportedStlModel } from './stl-importer';
 	import type { ModelSurfaceHit, SupportPoint, SupportStructure } from './supports';
+	import type { AutoSupportBuildStatus } from './auto-support-state.svelte';
 	import type { PreviewBuildStatus, PreviewMeshData } from './preview-state.svelte';
 
 	type Props = {
@@ -33,6 +34,8 @@
 		supportPointCount: number;
 		supportPoints: readonly SupportPoint[];
 		supportStructures: readonly SupportStructure[];
+		autoSupportStatus: AutoSupportBuildStatus;
+		autoSupportProgress: number;
 		previewStatus: PreviewBuildStatus;
 		previewProgress: number;
 		previewMesh: PreviewMeshData | null;
@@ -44,6 +47,7 @@
 		onRotationChange: (rotation: ModelRotation) => void;
 		onSupportPointPlaced: (hit: ModelSurfaceHit) => void;
 		onEnterSupports: () => void;
+		onEnterPreview: () => void;
 		onBackToPrepare: () => void;
 		onBackToSupports: () => void;
 	};
@@ -60,6 +64,8 @@
 		supportPointCount,
 		supportPoints,
 		supportStructures,
+		autoSupportStatus,
+		autoSupportProgress,
 		previewStatus,
 		previewProgress,
 		previewMesh,
@@ -71,6 +77,7 @@
 		onRotationChange,
 		onSupportPointPlaced,
 		onEnterSupports,
+		onEnterPreview,
 		onBackToPrepare,
 		onBackToSupports
 	}: Props = $props();
@@ -81,13 +88,17 @@
 	let placingSupports = $derived(interactionMode === 'place-supports');
 	let previewing = $derived(interactionMode === 'readonly');
 	let previewPercent = $derived(Math.round(previewProgress * 100));
+	let autoSupportPercent = $derived(Math.round(autoSupportProgress * 100));
+	let generatingSupports = $derived(placingSupports && autoSupportStatus === 'building');
 	let orbitHintActive = $derived(camera.orbiting || modelInteraction !== null);
 	let canvasCursorClass = $derived(
 		camera.orbiting || modelInteraction !== null
 			? 'cursor-grabbing'
-			: placingSupports
-				? 'cursor-crosshair'
-				: 'cursor-default'
+			: generatingSupports
+				? 'cursor-progress'
+				: placingSupports
+					? 'cursor-crosshair'
+					: 'cursor-default'
 	);
 
 	const BACK_BUTTON_CLASS =
@@ -100,6 +111,9 @@
 		'w-[22px] shrink-0 fill-[rgba(255,255,255,0.06)] stroke-current [stroke-linecap:round] [stroke-linejoin:round] [stroke-width:1.6]';
 	const ACTION_TITLE = 'text-[10px] font-bold uppercase tracking-[0.02em]';
 	const ACTION_DESC = 'flex flex-col gap-0.5';
+	const GREEN_ACTION_BUTTON = `${ACTION_BOX} cursor-pointer border border-green/48 bg-[rgba(18,61,37,0.9)] text-[#70e6a1] hover:border-[rgba(112,230,161,0.76)] hover:bg-[rgba(21,77,45,0.96)] hover:shadow-[0_8px_28px_rgba(0,0,0,0.28),0_0_18px_rgba(87,220,139,0.08)] focus-visible:outline-2 focus-visible:outline-offset-[3px] focus-visible:outline-[#70e6a1]`;
+	const CORNER_ACTION_STACK =
+		'absolute right-[17px] bottom-[17px] flex w-[min(280px,calc(100%_-_34px))] flex-col gap-2 max-mobile:right-3 max-mobile:bottom-[54px] max-mobile:w-[calc(100%_-_24px)]';
 	const PREVIEW_STATUS_BASE =
 		'pointer-events-none absolute right-[17px] bottom-[17px] flex w-[min(300px,calc(100%_-_34px))] flex-col gap-[5px] rounded-lg border px-[11px] py-[9px] text-[10px] font-semibold backdrop-blur-[8px] max-mobile:right-3';
 
@@ -276,17 +290,17 @@
 							? 'Orbiting view'
 							: previewing
 								? 'Preview is read-only · Drag to orbit'
-								: placingSupports
-									? 'Click model to place · Middle-drag to orbit'
-									: model
-										? `Drag rings to rotate · ${ROTATION_SNAP_DEGREES}° snap · Shift for free`
-										: 'Middle-drag to orbit'}
+								: generatingSupports
+									? 'Generating initial supports · Middle-drag to orbit'
+									: placingSupports
+										? 'Click model to place · Middle-drag to orbit'
+										: model
+											? `Drag rings to rotate · ${ROTATION_SNAP_DEGREES}° snap · Shift for free`
+											: 'Middle-drag to orbit'}
 			</span>
 		</div>
 		{#if modelOutsideBuildVolume || (interactionMode === 'transform-model' && canEnterSupports)}
-			<div
-				class="absolute right-[17px] bottom-[17px] flex w-[min(280px,calc(100%_-_34px))] flex-col gap-2 max-mobile:right-3 max-mobile:bottom-[54px] max-mobile:w-[calc(100%_-_24px)]"
-			>
+			<div class={CORNER_ACTION_STACK}>
 				{#if modelOutsideBuildVolume}
 					<button
 						type="button"
@@ -324,11 +338,7 @@
 							</div>
 						</div>
 					{/if}
-					<button
-						type="button"
-						class="{ACTION_BOX} cursor-pointer border border-green/48 bg-[rgba(18,61,37,0.9)] text-[#70e6a1] hover:border-[rgba(112,230,161,0.76)] hover:bg-[rgba(21,77,45,0.96)] hover:shadow-[0_8px_28px_rgba(0,0,0,0.28),0_0_18px_rgba(87,220,139,0.08)] focus-visible:outline-2 focus-visible:outline-offset-[3px] focus-visible:outline-[#70e6a1]"
-						onclick={onEnterSupports}
-					>
+					<button type="button" class={GREEN_ACTION_BUTTON} onclick={onEnterSupports}>
 						<svg class={ACTION_ICON} viewBox="0 0 24 24" aria-hidden="true">
 							<circle cx="8" cy="8" r="2.5" /><path d="M8 10.5V20m8-13v13M4 20h16" />
 							<circle cx="16" cy="4.5" r="2.5" />
@@ -343,14 +353,44 @@
 			</div>
 		{/if}
 		{#if placingSupports}
-			<p
-				class="pointer-events-none absolute right-[17px] bottom-[17px] m-0 flex items-center gap-[7px] rounded-[7px] border border-green/30 bg-[rgba(11,35,23,0.82)] px-[9px] py-[7px] text-[9px] font-semibold text-green-soft max-mobile:right-3 max-mobile:bottom-[54px]"
-				aria-live="polite"
-			>
-				<span class="u-dot text-green"></span>{supportPointCount} support {supportPointCount === 1
-					? 'point'
-					: 'points'} placed
-			</p>
+			{#if autoSupportStatus === 'building'}
+				<div
+					class="{PREVIEW_STATUS_BASE} border-[rgba(120,150,185,0.32)] bg-[rgba(12,20,30,0.86)] text-[#9fb2c6]"
+					role="status"
+					aria-live="polite"
+				>
+					<div class="h-1 w-full overflow-hidden rounded-full bg-[rgba(120,150,185,0.22)]">
+						<div
+							class="h-full rounded-full bg-[linear-gradient(90deg,#4d9fd6,#7ad0ff)] transition-[width] duration-[160ms]"
+							style:width={`${autoSupportPercent}%`}
+						></div>
+					</div>
+					<span>Generating initial supports · {autoSupportPercent}%</span>
+				</div>
+			{:else}
+				<div class={CORNER_ACTION_STACK}>
+					<p
+						class="pointer-events-none m-0 flex items-center gap-[7px] self-end rounded-[7px] border border-green/30 bg-[rgba(11,35,23,0.82)] px-[9px] py-[7px] text-[9px] font-semibold text-green-soft"
+						aria-live="polite"
+					>
+						<span class="u-dot text-green"></span>{supportPointCount} support {supportPointCount ===
+						1
+							? 'point'
+							: 'points'} placed
+					</p>
+					{#if canEnterSupports}
+						<button type="button" class={GREEN_ACTION_BUTTON} onclick={onEnterPreview}>
+							<svg class={ACTION_ICON} viewBox="0 0 24 24" aria-hidden="true">
+								<path d="m12 3 9 5-9 5-9-5 9-5Z" /><path d="m3 12 9 5 9-5M3 16l9 5 9-5" />
+							</svg>
+							<div class={ACTION_DESC}>
+								<strong class={ACTION_TITLE}>Preview layers</strong>
+								<span class="text-[9px] leading-[1.35] text-[#8ecba7]">Supports are ready.</span>
+							</div>
+						</button>
+					{/if}
+				</div>
+			{/if}
 		{/if}
 		{#if previewing}
 			{#if previewStatus === 'building'}

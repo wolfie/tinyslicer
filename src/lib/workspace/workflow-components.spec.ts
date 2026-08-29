@@ -9,6 +9,8 @@ import type { ImportedStlModel } from './stl-importer';
 const noop = () => {};
 
 const previewProps = {
+	autoSupportStatus: 'idle' as const,
+	autoSupportProgress: 0,
 	previewStatus: 'idle' as const,
 	previewProgress: 0,
 	previewMesh: null,
@@ -16,6 +18,7 @@ const previewProps = {
 	previewZHeightMm: 0,
 	previewWatertight: true,
 	previewError: null,
+	onEnterPreview: noop,
 	onBackToSupports: noop
 };
 
@@ -79,6 +82,7 @@ describe('workflow UI', () => {
 			}
 		}).body;
 		expect(valid).toContain('Add supports');
+		expect(valid).not.toContain('Preview layers');
 		expect(valid).not.toContain('Outside print volume');
 		expect(valid).not.toContain('Limited support area');
 
@@ -132,7 +136,39 @@ describe('workflow UI', () => {
 		expect(body).toContain('Place supports');
 		expect(body).toContain('Back to Prepare');
 		expect(body).toContain('0 support points placed');
+		expect(body).toContain('Preview layers');
 		expect(body).not.toContain('Add supports');
+	});
+
+	it('shows automatic-support generation progress in the viewport', () => {
+		const model = modelWithinBuildVolume();
+		const { body } = render(WorkspaceViewport, {
+			props: {
+				model,
+				modelTranslation: { x: 0, y: 0, z: 0 },
+				modelRotation: { x: 0, y: 0, z: 0, w: 1 },
+				transformedModelBounds: model.bounds,
+				modelOutsideBuildVolume: false,
+				modelOverlapsSupportMargin: false,
+				canEnterSupports: true,
+				interactionMode: 'place-supports',
+				supportPointCount: 0,
+				supportPoints: [],
+				supportStructures: [],
+				onTranslationChange: noop,
+				onRotationChange: noop,
+				onSupportPointPlaced: noop,
+				onEnterSupports: noop,
+				onBackToPrepare: noop,
+				...previewProps,
+				autoSupportStatus: 'building',
+				autoSupportProgress: 0.4
+			}
+		});
+
+		expect(body).toContain('Generating initial supports · 40%');
+		expect(body).not.toContain('0 support points placed');
+		expect(body).not.toContain('Preview layers');
 	});
 
 	it('enables the Preview step once a model fits the build volume', () => {
@@ -189,6 +225,7 @@ describe('workflow UI', () => {
 		expect(body).toContain('Back to Supports');
 		expect(body).toContain('Reconstructing sliced result · 50%');
 		expect(body).not.toContain('Add supports');
+		expect(body).not.toContain('Preview layers');
 	});
 
 	it('only renders the destructive dialog while confirmation is pending', () => {

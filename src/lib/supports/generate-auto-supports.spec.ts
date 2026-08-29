@@ -85,6 +85,7 @@ function generate(positionValues: readonly number[], settings = SETTINGS, profil
 		modelFromPositions(positionValues),
 		ZERO_MODEL_TRANSLATION,
 		IDENTITY_MODEL_ROTATION,
+		undefined,
 		settings,
 		profile
 	);
@@ -195,5 +196,26 @@ describe('automatic support suggestions', () => {
 		expect(result.hits).toEqual([]);
 		expect(result.diagnostics.meshIsWatertightAtPixelSamples).toBe(false);
 		expect(result.diagnostics.oddIntersectionPixelCount).toBeGreaterThan(0);
+	});
+
+	it('reports monotonic layer progress that ends at the total', () => {
+		const calls: Array<[number, number]> = [];
+		generateAutoSupportHits(
+			modelFromPositions(boxPositions([4, 4, 5], [12, 12, 6])),
+			ZERO_MODEL_TRANSLATION,
+			IDENTITY_MODEL_ROTATION,
+			(completed, total) => calls.push([completed, total]),
+			SETTINGS,
+			PROFILE
+		);
+
+		expect(calls.length).toBeGreaterThan(0);
+		const total = calls[0][1];
+		expect(total).toBeGreaterThan(0);
+		expect(calls.at(-1)).toEqual([total, total]);
+		for (let i = 1; i < calls.length; i += 1) {
+			expect(calls[i][1]).toBe(total);
+			expect(calls[i][0]).toBeGreaterThanOrEqual(calls[i - 1][0]);
+		}
 	});
 });

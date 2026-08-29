@@ -9,7 +9,10 @@
 	import { WorkspaceState, type WorkflowStep } from '$lib/workspace/workspace-state.svelte';
 
 	const workspace = new WorkspaceState();
-	onDestroy(() => workspace.previewBuild.dispose());
+	onDestroy(() => {
+		workspace.autoSupportBuild.dispose();
+		workspace.previewBuild.dispose();
+	});
 	let importState = $state<'idle' | 'loading' | 'error'>('idle');
 	let importError = $state('');
 	let isDraggingFile = $state(false);
@@ -156,6 +159,8 @@
 			supportPointCount={workspace.supportPoints.length}
 			supportPoints={workspace.supportPoints}
 			supportStructures={workspace.supportPlan.structures}
+			autoSupportStatus={workspace.autoSupportBuild.status}
+			autoSupportProgress={workspace.autoSupportBuild.progress}
 			previewStatus={workspace.previewBuild.status}
 			previewProgress={workspace.previewBuild.progress}
 			previewMesh={workspace.previewBuild.mesh}
@@ -167,6 +172,7 @@
 			onRotationChange={workspace.setModelRotation}
 			onSupportPointPlaced={(hit) => workspace.addSupportPoint(hit)}
 			onEnterSupports={() => requestStep('supports')}
+			onEnterPreview={() => requestStep('preview')}
 			onBackToPrepare={() => requestStep('prepare')}
 			onBackToSupports={() => requestStep('supports')}
 		/>
@@ -223,7 +229,17 @@
 								>
 									<span class="u-dot text-green"></span>Support placement
 								</div>
-								{#if workspace.autoSupportDiagnostics?.meshIsWatertightAtPixelSamples === false}
+								{#if workspace.autoSupportBuild.status === 'building'}
+									<p class="mt-[9px] mb-[13px] text-[10px] leading-[1.45] text-[#718d7d]">
+										Scanning 0.05 mm layers for unsupported regions…
+										{Math.round(workspace.autoSupportBuild.progress * 100)}%
+									</p>
+								{:else if workspace.autoSupportBuild.status === 'error'}
+									<p class="mt-[9px] mb-[13px] text-[10px] leading-[1.45] text-[#718d7d]">
+										{workspace.autoSupportBuild.error ??
+											'Automatic suggestions could not be generated.'} Place supports manually.
+									</p>
+								{:else if workspace.autoSupportDiagnostics?.meshIsWatertightAtPixelSamples === false}
 									<p class="mt-[9px] mb-[13px] text-[10px] leading-[1.45] text-[#718d7d]">
 										Automatic suggestions were skipped because the sampled mesh is open. Review the
 										model and place supports manually.

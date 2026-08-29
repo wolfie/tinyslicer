@@ -35,6 +35,13 @@ export type AutoSupportResult = {
 	diagnostics: AutoSupportDiagnostics;
 };
 
+/** Reports how many of the scanned layers have been analyzed while hunting for
+ *  unsupported regions. Same shape as the preview mesh progress callback. */
+export type AutoSupportProgress = (completedLayers: number, totalLayers: number) => void;
+
+/** Emit a progress tick every N scanned layers. */
+export const AUTO_SUPPORT_PROGRESS_LAYER_STRIDE = 16;
+
 export const DEFAULT_AUTO_SUPPORT_SETTINGS: AutoSupportSettings = {
 	layerLookback: 3,
 	overhangAngleDegrees: 45,
@@ -124,6 +131,7 @@ export function generateAutoSupportHits(
 	model: Pick<ImportedStlModel, 'positions' | 'bounds'>,
 	translation: ModelTranslation,
 	rotation: ModelRotation,
+	onProgress?: AutoSupportProgress,
 	settings: AutoSupportSettings = DEFAULT_AUTO_SUPPORT_SETTINGS,
 	profile: LayerMaskRasterizationProfile = TINYMAKER_LAYER_MASK_PROFILE
 ): AutoSupportResult {
@@ -139,6 +147,7 @@ export function generateAutoSupportHits(
 		truncated: false
 	};
 	if (!diagnostics.meshIsWatertightAtPixelSamples || rasterizer.layerCount < 2) {
+		onProgress?.(0, 0);
 		return { hits: [], diagnostics };
 	}
 
@@ -156,12 +165,16 @@ export function generateAutoSupportHits(
 		Math.ceil(rasterizer.transformedBounds.min.z / rasterizer.layerHeightMm - LAYER_INDEX_EPSILON) -
 			1
 	);
+	const scanLayerCount = rasterizer.layerCount - firstOccupiedLayerIndex;
 
 	layerLoop: for (
 		let layerIndex = firstOccupiedLayerIndex;
 		layerIndex < rasterizer.layerCount;
 		layerIndex += 1
 	) {
+		if ((layerIndex - firstOccupiedLayerIndex) % AUTO_SUPPORT_PROGRESS_LAYER_STRIDE === 0) {
+			onProgress?.(layerIndex - firstOccupiedLayerIndex, scanLayerCount);
+		}
 		const layerDelta = Math.min(settings.layerLookback, layerIndex);
 		const currentMask = rasterizer.createLayerMask(layerIndex);
 		const comparisonMask = rasterizer.createLayerMask(layerIndex - layerDelta);
@@ -210,5 +223,6 @@ export function generateAutoSupportHits(
 		}
 	}
 
+	onProgress?.(scanLayerCount, scanLayerCount);
 	return { hits, diagnostics };
 }
