@@ -109,15 +109,27 @@
 	/>
 </svelte:head>
 
-<div class="app-shell">
+<div
+	class="min-h-screen bg-bg bg-[radial-gradient(circle_at_48%_-20%,rgba(37,78,109,0.16),transparent_37rem)]"
+>
 	{#if isDraggingFile}
-		<div class="drop-overlay" role="status" aria-live="polite">
-			<div class="drop-card">
-				<svg viewBox="0 0 48 48" aria-hidden="true">
+		<div
+			class="pointer-events-none fixed inset-0 z-[1000] grid place-items-center border-2 border-[rgba(103,193,246,0.8)] bg-[rgba(7,14,22,0.82)] backdrop-blur-[7px]"
+			role="status"
+			aria-live="polite"
+		>
+			<div
+				class="flex min-w-[min(360px,calc(100vw_-_40px))] flex-col items-center rounded-2xl border border-[rgba(103,193,246,0.5)] bg-[linear-gradient(145deg,rgba(26,61,87,0.94),rgba(13,27,40,0.96))] px-11 py-9 text-center shadow-[0_24px_80px_rgba(0,0,0,0.45),inset_0_1px_rgba(255,255,255,0.08)]"
+			>
+				<svg
+					class="u-icon mb-4 w-12 stroke-[#75c8ff] stroke-2 drop-shadow-[0_0_10px_rgba(103,193,246,0.45)]"
+					viewBox="0 0 48 48"
+					aria-hidden="true"
+				>
 					<path d="M24 32V9m0 0-8 8m8-8 8 8M9 30v8h30v-8" />
 				</svg>
-				<strong>Drop STL to import</strong>
-				<span>ASCII or binary · processed locally</span>
+				<strong class="text-[17px] font-[650] text-[#e2f3ff]">Drop STL to import</strong>
+				<span class="mt-[7px] text-[11px] text-[#83a8c1]">ASCII or binary · processed locally</span>
 			</div>
 		</div>
 	{/if}
@@ -129,7 +141,9 @@
 		onFileSelection={handleStlSelection}
 	/>
 
-	<main class="workspace">
+	<main
+		class="grid h-[calc(100vh_-_68px)] min-h-[560px] grid-cols-[minmax(0,1fr)_288px] max-tablet:grid-cols-[1fr]"
+	>
 		<WorkspaceViewport
 			model={workspace.model}
 			modelTranslation={workspace.modelTranslation}
@@ -157,82 +171,121 @@
 			onBackToSupports={() => requestStep('supports')}
 		/>
 
-		<aside class="properties" aria-label="Scene properties">
-			<section class="property-section scene-section">
-				<div class="section-heading">
+		<aside
+			class="grid grid-rows-[auto_auto_1fr] border-l border-line bg-panel max-tablet:hidden"
+			aria-label="Scene properties"
+		>
+			<section class="border-b border-line p-[22px]">
+				<div class="flex items-start justify-between">
 					<div>
-						<p class="eyebrow">Scene</p>
-						<h2 title={workspace.model?.name}>{workspace.model?.name ?? 'No model loaded'}</h2>
+						<p class="u-eyebrow mb-1">Scene</p>
+						<h2
+							class="m-0 text-[14px] font-semibold tracking-[-0.02em]"
+							title={workspace.model?.name}
+						>
+							{workspace.model?.name ?? 'No model loaded'}
+						</h2>
 					</div>
-					<span class={['empty-dot', { loaded: workspace.model !== null }]}></span>
+					<span
+						class={[
+							'mt-[5px] size-2 rounded-full border-2',
+							workspace.model !== null
+								? 'border-[#62b7ed] bg-[#62b7ed] shadow-[0_0_8px_rgba(98,183,237,0.7)]'
+								: 'border-[#48566a]'
+						]}
+					></span>
 				</div>
 				{#if workspace.model}
-					<div class="model-state">
+					<div class="pt-[18px]">
 						{#if workspace.step === 'prepare'}
-							<div class="model-position">
-								<span></span>Offset X {formatTranslation(workspace.modelTranslation.x)} · Y
+							<div
+								class="flex items-center gap-[7px] rounded-[7px] border border-blue/25 bg-blue/10 px-[9px] py-2 text-[10px] font-semibold text-[#86bddf]"
+							>
+								<span class="u-dot text-blue"></span>Offset X {formatTranslation(
+									workspace.modelTranslation.x
+								)} · Y
 								{formatTranslation(workspace.modelTranslation.y)} · Z
 								{formatTranslation(workspace.modelTranslation.z)} mm
 							</div>
-							<div class="model-rotation">
-								<span></span>Rotation X {formatDegrees(workspace.rotationDegrees.x)} · Y
+							<div
+								class="mt-[7px] flex items-center gap-[7px] rounded-[7px] border border-purple/30 bg-purple/10 px-[9px] py-2 text-[10px] font-semibold text-[#b8acef]"
+							>
+								<span class="u-dot text-purple"></span>Rotation X {formatDegrees(
+									workspace.rotationDegrees.x
+								)} · Y
 								{formatDegrees(workspace.rotationDegrees.y)} · Z
 								{formatDegrees(workspace.rotationDegrees.z)}
 							</div>
 						{:else if workspace.step === 'supports'}
-							<div class="support-mode-summary">
-								<div class="support-mode-heading"><span></span>Support placement</div>
+							<div class="rounded-lg border border-green/30 bg-green/12 p-3">
+								<div
+									class="flex items-center gap-[7px] text-[10px] font-bold tracking-[0.04em] text-green-soft uppercase"
+								>
+									<span class="u-dot text-green"></span>Support placement
+								</div>
 								{#if workspace.autoSupportDiagnostics?.meshIsWatertightAtPixelSamples === false}
-									<p>
+									<p class="mt-[9px] mb-[13px] text-[10px] leading-[1.45] text-[#718d7d]">
 										Automatic suggestions were skipped because the sampled mesh is open. Review the
 										model and place supports manually.
 									</p>
 								{:else if workspace.autoGeneratedSupportCount > 0}
-									<p>
+									<p class="mt-[9px] mb-[13px] text-[10px] leading-[1.45] text-[#718d7d]">
 										{workspace.autoGeneratedSupportCount} initial suggestions were generated from 0.05
 										mm layers. Review them and click the model to add any missing support.
 									</p>
 								{:else}
-									<p>
+									<p class="mt-[9px] mb-[13px] text-[10px] leading-[1.45] text-[#718d7d]">
 										No unsupported regions met the initial thresholds. Review the model and click
 										its surface to add supports manually.
 									</p>
 								{/if}
-								<strong>{workspace.supportPoints.length}</strong>
-								<small
+								<strong class="text-[22px] font-[650] text-[#b9f0ce] tabular-nums"
+									>{workspace.supportPoints.length}</strong
+								>
+								<small class="ml-1.5 text-[9px] text-[#6e917b]"
 									>{workspace.supportPoints.length === 1 ? 'point placed' : 'points placed'}</small
 								>
 							</div>
 						{:else if workspace.step === 'preview'}
-							<div class="support-mode-summary preview-summary">
-								<div class="support-mode-heading"><span></span>Sliced preview</div>
+							<div class="rounded-lg border border-green/30 bg-green/12 p-3">
+								<div
+									class="flex items-center gap-[7px] text-[10px] font-bold tracking-[0.04em] text-green-soft uppercase"
+								>
+									<span class="u-dot text-green"></span>Sliced preview
+								</div>
 								{#if workspace.previewBuild.status === 'building'}
-									<p>
+									<p class="mt-[9px] mb-[13px] text-[10px] leading-[1.45] text-[#718d7d]">
 										Reconstructing the printed result from 0.05 mm layers…
 										{Math.round(workspace.previewBuild.progress * 100)}%
 									</p>
 								{:else if workspace.previewBuild.status === 'error'}
-									<p>
+									<p class="mt-[9px] mb-[13px] text-[10px] leading-[1.45] text-[#718d7d]">
 										{workspace.previewBuild.error ?? 'The sliced preview could not be generated.'}
 									</p>
 								{:else}
-									<p>Model and supports fused into one immutable, voxel-accurate solid.</p>
+									<p class="mt-[9px] mb-[13px] text-[10px] leading-[1.45] text-[#718d7d]">
+										Model and supports fused into one immutable, voxel-accurate solid.
+									</p>
 									{#if workspace.previewBuild.status === 'ready' && !workspace.previewBuild.watertight}
-										<p>
+										<p class="mt-[9px] mb-[13px] text-[10px] leading-[1.45] text-[#718d7d]">
 											The sampled mesh was not watertight, so the preview may differ from the
 											printed part.
 										</p>
 									{/if}
 								{/if}
-								<strong>{workspace.previewBuild.layerCount || '—'}</strong>
-								<small
+								<strong class="text-[22px] font-[650] text-[#b9f0ce] tabular-nums"
+									>{workspace.previewBuild.layerCount || '—'}</strong
+								>
+								<small class="ml-1.5 text-[9px] text-[#6e917b]"
 									>{workspace.previewBuild.layerCount === 1 ? 'layer' : 'layers'} · Z 0–{formatMillimetres(
 										workspace.previewBuild.zHeightMm
 									)} mm</small
 								>
 							</div>
 						{/if}
-						<dl class="model-details">
+						<dl
+							class="mt-3 grid text-[10px] [&_dd]:m-0 [&_dd]:text-right [&_dd]:text-ink-2 [&_dd]:tabular-nums [&_dt]:text-ink-5 [&>div]:flex [&>div]:justify-between [&>div]:gap-3 [&>div]:border-b [&>div]:border-line-soft [&>div]:py-2 [&>div:last-child]:border-b-0"
+						>
 							<div>
 								<dt>Dimensions</dt>
 								<dd>
@@ -262,29 +315,48 @@
 						</dl>
 					</div>
 				{:else}
-					<div class="empty-state">
-						<svg viewBox="0 0 48 48" aria-hidden="true"
+					<div class="flex flex-col items-center px-3 pt-[34px] pb-3 text-center">
+						<svg
+							class="mb-3.5 w-[47px] fill-[rgba(76,108,139,0.06)] stroke-[#394a5f] [stroke-width:1] [stroke-linejoin:round]"
+							viewBox="0 0 48 48"
+							aria-hidden="true"
 							><path d="m24 6 15 8.5v19L24 42 9 33.5v-19L24 6Z" /><path
 								d="m9.5 15 14.5 8.2L38.5 15M24 23.2V42"
 							/></svg
 						>
-						<p>Your workspace is ready.</p>
-						<span>Open or drop an STL file to begin preparing a print.</span>
+						<p class="m-0 mb-[5px] text-[12px] font-semibold text-[#9ba9ba]">
+							Your workspace is ready.
+						</p>
+						<span class="max-w-[190px] text-[10px] leading-normal text-[#58677a]"
+							>Open or drop an STL file to begin preparing a print.</span
+						>
 					</div>
 				{/if}
 				{#if importError}
-					<p class="import-error" role="alert">{importError}</p>
+					<p
+						class="mt-3 rounded-[7px] border border-red/30 bg-red/10 px-[9px] py-2 text-[10px] leading-[1.45] text-red-soft"
+						role="alert"
+					>
+						{importError}
+					</p>
 				{/if}
 			</section>
-			<section class="property-section profile-section">
-				<div class="section-heading">
+			<section class="border-b border-line p-[22px]">
+				<div class="flex items-start justify-between">
 					<div>
-						<p class="eyebrow">Printer profile</p>
-						<h2>{TINYMAKER_PROFILE.name}</h2>
+						<p class="u-eyebrow mb-1">Printer profile</p>
+						<h2 class="m-0 text-[14px] font-semibold tracking-[-0.02em]">
+							{TINYMAKER_PROFILE.name}
+						</h2>
 					</div>
-					<span class="fixed-badge">Fixed</span>
+					<span
+						class="u-chip gap-[7px] px-[7px] py-1 text-[9px] font-semibold text-[#718198] uppercase"
+						>Fixed</span
+					>
 				</div>
-				<dl class="profile-grid">
+				<dl
+					class="mt-[17px] grid text-[10px] [&_dd]:m-0 [&_dd]:text-ink-2 [&_dd]:tabular-nums [&_dt]:text-ink-5 [&>div]:flex [&>div]:justify-between [&>div]:border-b [&>div]:border-line-soft [&>div]:py-[9px] [&>div:last-child]:border-b-0"
+				>
 					<div>
 						<dt>Resolution</dt>
 						<dd>{TINYMAKER_PROFILE.resolution.x} × {TINYMAKER_PROFILE.resolution.y} px</dd>
@@ -303,16 +375,18 @@
 					</div>
 				</dl>
 			</section>
-			<footer class="privacy-note">
-				<svg viewBox="0 0 18 18" aria-hidden="true"
+			<footer class="flex items-center gap-[10px] self-end px-[22px] py-[18px] text-[#56677b]">
+				<svg
+					class="u-icon w-[21px] shrink-0 stroke-[#466d8d] [stroke-width:1.1]"
+					viewBox="0 0 18 18"
+					aria-hidden="true"
 					><path d="M9 2 15 4v5c0 3.2-2.2 5.8-6 7-3.8-1.2-6-3.8-6-7V4l6-2Z" /><path
 						d="m6.2 9 1.7 1.7 3.8-4"
 					/></svg
 				>
-				<div>
-					<strong>Your models stay private</strong><span
-						>All processing happens in this browser.</span
-					>
+				<div class="flex flex-col gap-0.5">
+					<strong class="text-[10px] font-semibold text-[#7b8ca0]">Your models stay private</strong
+					><span class="text-[9px]">All processing happens in this browser.</span>
 				</div>
 			</footer>
 		</aside>
@@ -324,346 +398,3 @@
 		onConfirm={workspace.confirmDiscardSupports}
 	/>
 </div>
-
-<style>
-	:global(*) {
-		box-sizing: border-box;
-	}
-	:global(html) {
-		background: #0a0f16;
-	}
-	:global(body) {
-		margin: 0;
-		min-width: 320px;
-		min-height: 100vh;
-		background: #0a0f16;
-		color: #edf4fc;
-		font-family:
-			Inter,
-			ui-sans-serif,
-			system-ui,
-			-apple-system,
-			BlinkMacSystemFont,
-			'Segoe UI',
-			sans-serif;
-	}
-	:global(button),
-	:global(canvas) {
-		font: inherit;
-	}
-	.app-shell {
-		min-height: 100vh;
-		background:
-			radial-gradient(circle at 48% -20%, rgba(37, 78, 109, 0.16), transparent 37rem), #0a0f16;
-	}
-	.drop-overlay {
-		position: fixed;
-		z-index: 1000;
-		inset: 0;
-		display: grid;
-		place-items: center;
-		border: 2px solid rgba(103, 193, 246, 0.8);
-		background: rgba(7, 14, 22, 0.82);
-		backdrop-filter: blur(7px);
-		pointer-events: none;
-	}
-	.drop-card {
-		display: flex;
-		align-items: center;
-		flex-direction: column;
-		min-width: min(360px, calc(100vw - 40px));
-		padding: 36px 44px;
-		border: 1px solid rgba(103, 193, 246, 0.5);
-		border-radius: 16px;
-		background: linear-gradient(145deg, rgba(26, 61, 87, 0.94), rgba(13, 27, 40, 0.96));
-		box-shadow:
-			0 24px 80px rgba(0, 0, 0, 0.45),
-			inset 0 1px rgba(255, 255, 255, 0.08);
-		text-align: center;
-	}
-	.drop-card svg {
-		width: 48px;
-		margin-bottom: 16px;
-		fill: none;
-		stroke: #75c8ff;
-		stroke-linecap: round;
-		stroke-linejoin: round;
-		stroke-width: 2;
-		filter: drop-shadow(0 0 10px rgba(103, 193, 246, 0.45));
-	}
-	.drop-card strong {
-		color: #e2f3ff;
-		font-size: 17px;
-		font-weight: 650;
-	}
-	.drop-card span {
-		margin-top: 7px;
-		color: #83a8c1;
-		font-size: 11px;
-	}
-	.workspace {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) 288px;
-		height: calc(100vh - 68px);
-		min-height: 560px;
-	}
-	.section-heading {
-		display: flex;
-		align-items: flex-start;
-		justify-content: space-between;
-	}
-	.eyebrow {
-		margin: 0 0 4px;
-		color: #65768d;
-		font-size: 9px;
-		font-weight: 700;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-	}
-	h2 {
-		margin: 0;
-		font-weight: 600;
-		letter-spacing: -0.02em;
-	}
-	h2 {
-		font-size: 14px;
-	}
-	.fixed-badge {
-		display: inline-flex;
-		align-items: center;
-		gap: 7px;
-		padding: 6px 9px;
-		border: 1px solid #243247;
-		border-radius: 7px;
-		background: #101823;
-		color: #8c9caf;
-		font-size: 10px;
-		font-weight: 600;
-	}
-	.properties {
-		display: grid;
-		grid-template-rows: auto auto 1fr;
-		border-left: 1px solid #1c2634;
-		background: #0d141e;
-	}
-	.property-section {
-		padding: 22px;
-		border-bottom: 1px solid #1c2634;
-	}
-	.empty-dot {
-		width: 8px;
-		height: 8px;
-		margin-top: 5px;
-		border: 2px solid #48566a;
-		border-radius: 50%;
-	}
-	.empty-dot.loaded {
-		border-color: #62b7ed;
-		background: #62b7ed;
-		box-shadow: 0 0 8px rgba(98, 183, 237, 0.7);
-	}
-	.empty-state {
-		display: flex;
-		align-items: center;
-		flex-direction: column;
-		padding: 34px 12px 12px;
-		text-align: center;
-	}
-	.empty-state svg {
-		width: 47px;
-		margin-bottom: 14px;
-		fill: rgba(76, 108, 139, 0.06);
-		stroke: #394a5f;
-		stroke-linejoin: round;
-		stroke-width: 1;
-	}
-	.empty-state p {
-		margin: 0 0 5px;
-		color: #9ba9ba;
-		font-size: 12px;
-		font-weight: 600;
-	}
-	.empty-state span {
-		max-width: 190px;
-		color: #58677a;
-		font-size: 10px;
-		line-height: 1.5;
-	}
-	.model-state {
-		padding-top: 18px;
-	}
-	.model-position,
-	.model-rotation {
-		display: flex;
-		align-items: center;
-		gap: 7px;
-		padding: 8px 9px;
-		border: 1px solid rgba(75, 137, 180, 0.25);
-		border-radius: 7px;
-		background: rgba(38, 91, 127, 0.12);
-		color: #86bddf;
-		font-size: 10px;
-		font-weight: 600;
-	}
-	.model-rotation {
-		margin-top: 7px;
-		border-color: rgba(118, 105, 211, 0.28);
-		background: rgba(83, 67, 156, 0.11);
-		color: #b8acef;
-	}
-	.model-position span,
-	.model-rotation span {
-		width: 6px;
-		height: 6px;
-		flex: 0 0 auto;
-		border-radius: 50%;
-		background: #67c1f6;
-		box-shadow: 0 0 6px rgba(103, 193, 246, 0.75);
-	}
-	.model-rotation span {
-		background: #a99af1;
-		box-shadow: 0 0 6px rgba(169, 154, 241, 0.72);
-	}
-	.support-mode-summary {
-		padding: 12px;
-		border: 1px solid rgba(87, 220, 139, 0.27);
-		border-radius: 8px;
-		background: rgba(23, 75, 44, 0.14);
-	}
-	.support-mode-heading {
-		display: flex;
-		align-items: center;
-		gap: 7px;
-		color: #8ed9ab;
-		font-size: 10px;
-		font-weight: 700;
-		letter-spacing: 0.04em;
-		text-transform: uppercase;
-	}
-	.support-mode-heading span {
-		width: 6px;
-		height: 6px;
-		border-radius: 50%;
-		background: #57dc8b;
-		box-shadow: 0 0 7px rgba(87, 220, 139, 0.72);
-	}
-	.support-mode-summary p {
-		margin: 9px 0 13px;
-		color: #718d7d;
-		font-size: 10px;
-		line-height: 1.45;
-	}
-	.support-mode-summary strong {
-		color: #b9f0ce;
-		font-size: 22px;
-		font-weight: 650;
-		font-variant-numeric: tabular-nums;
-	}
-	.support-mode-summary small {
-		margin-left: 6px;
-		color: #6e917b;
-		font-size: 9px;
-	}
-	.model-details {
-		display: grid;
-		margin: 12px 0 0;
-	}
-	.model-details div {
-		display: flex;
-		justify-content: space-between;
-		gap: 12px;
-		padding: 8px 0;
-		border-bottom: 1px solid #192330;
-		font-size: 10px;
-	}
-	.model-details div:last-child {
-		border-bottom: 0;
-	}
-	.model-details dt {
-		color: #5f6e81;
-	}
-	.model-details dd {
-		margin: 0;
-		color: #a4b2c3;
-		text-align: right;
-		font-variant-numeric: tabular-nums;
-	}
-	.import-error {
-		margin: 12px 0 0;
-		padding: 8px 9px;
-		border: 1px solid rgba(226, 94, 102, 0.28);
-		border-radius: 7px;
-		background: rgba(126, 34, 40, 0.13);
-		color: #f09a9f;
-		font-size: 10px;
-		line-height: 1.45;
-	}
-	.fixed-badge {
-		padding: 4px 7px;
-		color: #718198;
-		font-size: 9px;
-		text-transform: uppercase;
-	}
-	.profile-grid {
-		display: grid;
-		gap: 0;
-		margin: 17px 0 0;
-	}
-	.profile-grid div {
-		display: flex;
-		justify-content: space-between;
-		padding: 9px 0;
-		border-bottom: 1px solid #192330;
-		font-size: 10px;
-	}
-	.profile-grid div:last-child {
-		border-bottom: 0;
-	}
-	.profile-grid dt {
-		color: #5f6e81;
-	}
-	.profile-grid dd {
-		margin: 0;
-		color: #a4b2c3;
-		font-variant-numeric: tabular-nums;
-	}
-	.privacy-note {
-		align-self: end;
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		padding: 18px 22px;
-		color: #56677b;
-	}
-	.privacy-note svg {
-		width: 21px;
-		flex: 0 0 auto;
-		fill: none;
-		stroke: #466d8d;
-		stroke-linecap: round;
-		stroke-linejoin: round;
-		stroke-width: 1.1;
-	}
-	.privacy-note div {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-	}
-	.privacy-note strong {
-		color: #7b8ca0;
-		font-size: 10px;
-		font-weight: 600;
-	}
-	.privacy-note span {
-		font-size: 9px;
-	}
-	@media (max-width: 820px) {
-		.workspace {
-			grid-template-columns: 1fr;
-			height: calc(100vh - 68px);
-		}
-		.properties {
-			display: none;
-		}
-	}
-</style>

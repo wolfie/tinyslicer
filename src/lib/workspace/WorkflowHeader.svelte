@@ -25,241 +25,100 @@
 		if (step === 'supports' || step === 'preview') return canEnterSupports;
 		return false;
 	}
+
+	function stepState(id: WorkflowStep, index: number): 'active' | 'completed' | 'idle' {
+		if (id === currentStep) return 'active';
+		if (index < currentStepIndex) return 'completed';
+		return 'idle';
+	}
+
+	const STEP_LABEL_CLASS = {
+		active: 'text-[#bddcf8]',
+		completed: 'text-[#7eaece]',
+		idle: 'text-ink-4'
+	};
+	const STEP_BADGE_CLASS = {
+		active: 'border-[#3d7bac] bg-[#16334a] text-[#82c6ff]',
+		completed: 'border-[#356b7c] text-[#6edba0]',
+		idle: 'border-line-strong'
+	};
 </script>
 
-<header class="topbar">
-	<div class="brand" aria-label="TinySlicer">
-		<span class="brand-mark" aria-hidden="true">
-			<svg viewBox="0 0 32 32">
+<header
+	class="grid h-[68px] grid-cols-[1fr_auto_1fr] items-center border-b border-line bg-[rgba(12,18,26,0.88)] px-[22px] backdrop-blur-[16px] max-tablet:grid-cols-[1fr_auto] max-mobile:px-[14px]"
+>
+	<div
+		class="inline-flex w-fit items-center gap-[10px] text-[16px] font-[650] tracking-[-0.02em] text-ink-bright"
+		aria-label="TinySlicer"
+	>
+		<span
+			class="grid size-8 place-items-center rounded-[9px] border border-[#27527a] bg-[linear-gradient(145deg,#18324a,#101c29)] shadow-[0_7px_22px_rgba(0,0,0,0.3)]"
+			aria-hidden="true"
+		>
+			<svg
+				class="w-5 fill-blue/10 stroke-blue [stroke-width:1.4] [stroke-linejoin:round]"
+				viewBox="0 0 32 32"
+			>
 				<path d="M16 3.5 27 9.7v12.6L16 28.5 5 22.3V9.7L16 3.5Z" />
 				<path d="m5.5 10 10.5 6 10.5-6M16 16v12" />
 			</svg>
 		</span>
-		<span>Tiny<span>Slicer</span></span>
+		<span>Tiny<span class="text-blue">Slicer</span></span>
 	</div>
-	<nav class="workflow" aria-label="Slicing workflow">
+	<nav
+		class="flex items-center gap-[10px] max-compact:gap-[7px] max-tablet:hidden"
+		aria-label="Slicing workflow"
+	>
 		{#each WORKFLOW_STEPS as workflowStep, index (workflowStep.id)}
 			<button
 				type="button"
 				class={[
-					'workflow-step',
-					{ active: workflowStep.id === currentStep, completed: index < currentStepIndex }
+					'flex cursor-pointer items-center gap-[7px] border-0 bg-transparent text-[11px] font-semibold tracking-[0.03em] uppercase focus-visible:rounded focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue disabled:cursor-not-allowed disabled:opacity-[0.55]',
+					STEP_LABEL_CLASS[stepState(workflowStep.id, index)]
 				]}
 				disabled={!stepEnabled(workflowStep.id)}
 				aria-current={workflowStep.id === currentStep ? 'step' : undefined}
 				onclick={() => onStepRequest(workflowStep.id)}
 			>
-				<b>{index + 1}</b>{workflowStep.label}
+				<b
+					class={[
+						'grid size-[19px] place-items-center rounded-full border text-[9px]',
+						STEP_BADGE_CLASS[stepState(workflowStep.id, index)]
+					]}>{index + 1}</b
+				>{workflowStep.label}
 			</button>
 			{#if index < WORKFLOW_STEPS.length - 1}
-				<span class="workflow-divider" aria-hidden="true"></span>
+				<span class="h-px w-[18px] bg-[#273244] max-compact:w-[10px]" aria-hidden="true"></span>
 			{/if}
 		{/each}
 	</nav>
-	<div class="topbar-actions">
-		<span class="local-badge">
-			<svg viewBox="0 0 16 16" aria-hidden="true">
+	<div class="flex items-center justify-end gap-[14px]">
+		<span class="inline-flex items-center gap-1.5 text-[11px] text-[#728298] max-compact:hidden">
+			<svg class="u-icon w-3.5 [stroke-width:1.2]" viewBox="0 0 16 16" aria-hidden="true">
 				<path d="M8 1.5 13 3v4.2c0 3.1-2 5.9-5 7.3-3-1.4-5-4.2-5-7.3V3l5-1.5Z" />
 			</svg>
 			Local only
 		</span>
 		<input
 			id="stl-file-input"
-			class="file-input"
+			class="sr-only"
 			type="file"
 			accept=".stl,model/stl,application/sla"
 			disabled={importing}
 			onchange={onFileSelection}
 		/>
 		<label
-			class={['open-button', { disabled: importing }]}
+			class={[
+				'inline-flex h-9 items-center gap-2 rounded-lg border border-[#356b96] bg-[linear-gradient(#214968,#1a3d58)] px-3.5 text-xs font-semibold text-[#d7ecff] shadow-[inset_0_1px_rgba(255,255,255,0.08),0_4px_14px_rgba(0,0,0,0.18)]',
+				importing ? 'cursor-wait opacity-70' : 'cursor-pointer'
+			]}
 			for="stl-file-input"
 			aria-disabled={importing}
 		>
-			<svg viewBox="0 0 18 18" aria-hidden="true">
+			<svg class="u-icon w-4" viewBox="0 0 18 18" aria-hidden="true">
 				<path d="M9 12.5v-9m0 0L5.8 6.7M9 3.5l3.2 3.2M3 11.5v3h12v-3" />
 			</svg>
 			{importing ? 'Importing…' : 'Open STL'}
 		</label>
 	</div>
 </header>
-
-<style>
-	.topbar {
-		display: grid;
-		grid-template-columns: 1fr auto 1fr;
-		align-items: center;
-		height: 68px;
-		padding: 0 22px;
-		border-bottom: 1px solid #1c2634;
-		background: rgba(12, 18, 26, 0.88);
-		backdrop-filter: blur(16px);
-	}
-	.brand {
-		display: inline-flex;
-		align-items: center;
-		gap: 10px;
-		width: fit-content;
-		color: #f1f6fc;
-		font-size: 16px;
-		font-weight: 650;
-		letter-spacing: -0.02em;
-	}
-	.brand > span:last-child span {
-		color: #6bb8ff;
-	}
-	.brand-mark {
-		display: grid;
-		width: 32px;
-		height: 32px;
-		place-items: center;
-		border: 1px solid #27527a;
-		border-radius: 9px;
-		background: linear-gradient(145deg, #18324a, #101c29);
-		box-shadow: 0 7px 22px rgba(0, 0, 0, 0.3);
-	}
-	.brand-mark svg {
-		width: 20px;
-		fill: rgba(107, 184, 255, 0.08);
-		stroke: #74bfff;
-		stroke-linejoin: round;
-		stroke-width: 1.4;
-	}
-	.workflow {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-	}
-	.workflow-step {
-		display: flex;
-		align-items: center;
-		gap: 7px;
-		padding: 0;
-		border: 0;
-		background: transparent;
-		color: #637083;
-		cursor: pointer;
-		font-size: 11px;
-		font-weight: 600;
-		letter-spacing: 0.03em;
-		text-transform: uppercase;
-	}
-	.workflow-step:disabled {
-		cursor: not-allowed;
-		opacity: 0.55;
-	}
-	.workflow-step:focus-visible {
-		outline: 2px solid #68baff;
-		outline-offset: 4px;
-		border-radius: 4px;
-	}
-	.workflow-step b {
-		display: grid;
-		width: 19px;
-		height: 19px;
-		place-items: center;
-		border: 1px solid #293548;
-		border-radius: 50%;
-		font-size: 9px;
-	}
-	.workflow-step.active {
-		color: #bddcf8;
-	}
-	.workflow-step.active b {
-		border-color: #3d7bac;
-		background: #16334a;
-		color: #82c6ff;
-	}
-	.workflow-step.completed {
-		color: #7eaece;
-	}
-	.workflow-step.completed b {
-		border-color: #356b7c;
-		color: #6edba0;
-	}
-	.workflow-divider {
-		width: 18px;
-		height: 1px;
-		background: #273244;
-	}
-	.topbar-actions {
-		display: flex;
-		justify-content: flex-end;
-		align-items: center;
-		gap: 14px;
-	}
-	.local-badge {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		color: #728298;
-		font-size: 11px;
-	}
-	.local-badge svg {
-		width: 14px;
-		fill: none;
-		stroke: currentColor;
-		stroke-width: 1.2;
-	}
-	.open-button {
-		display: inline-flex;
-		align-items: center;
-		gap: 8px;
-		height: 36px;
-		padding: 0 14px;
-		border: 1px solid #356b96;
-		border-radius: 8px;
-		background: linear-gradient(#214968, #1a3d58);
-		box-shadow:
-			inset 0 1px rgba(255, 255, 255, 0.08),
-			0 4px 14px rgba(0, 0, 0, 0.18);
-		color: #d7ecff;
-		cursor: pointer;
-		font-size: 12px;
-		font-weight: 600;
-	}
-	.file-input {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
-	}
-	.open-button.disabled {
-		cursor: wait;
-		opacity: 0.7;
-	}
-	.open-button svg {
-		width: 16px;
-		fill: none;
-		stroke: currentColor;
-		stroke-linecap: round;
-		stroke-linejoin: round;
-		stroke-width: 1.5;
-	}
-	@media (max-width: 1040px) {
-		.local-badge {
-			display: none;
-		}
-		.workflow {
-			gap: 7px;
-		}
-		.workflow-divider {
-			width: 10px;
-		}
-	}
-	@media (max-width: 820px) {
-		.workflow {
-			display: none;
-		}
-		.topbar {
-			grid-template-columns: 1fr auto;
-		}
-	}
-	@media (max-width: 520px) {
-		.topbar {
-			padding: 0 14px;
-		}
-	}
-</style>

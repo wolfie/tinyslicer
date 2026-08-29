@@ -1,5 +1,127 @@
 @import 'tailwindcss';
 
+/* -------------------------------------------------------------------------- *
+ * Design tokens
+ *
+ * The workspace UI is a fixed dark theme. Every colour, font and breakpoint
+ * used by the Svelte components is declared here so the components only carry
+ * Tailwind utilities + a handful of shared component classes (below).
+ * -------------------------------------------------------------------------- */
+@theme {
+	--font-sans:
+		Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+	/* Surfaces (darkest -> most raised) */
+	--color-bg: #0a0f16;
+	--color-panel: #0d141e;
+	--color-elevated: #101823;
+	--color-overlay: #111a25;
+
+	/* Hairlines */
+	--color-line: #1c2634;
+	--color-line-strong: #243247;
+	--color-line-soft: #192330;
+
+	/* Text ramp (brightest -> faintest) */
+	--color-ink: #edf4fc;
+	--color-ink-bright: #f1f6fc;
+	--color-ink-2: #a4b2c3;
+	--color-ink-3: #8c9caf;
+	--color-ink-4: #65768d;
+	--color-ink-5: #5f6e81;
+
+	/* Accents — use the /opacity modifier for tinted borders and fills */
+	--color-blue: #67baff;
+	--color-blue-bright: #a8d9ff;
+	--color-green: #57dc8b;
+	--color-green-soft: #8ed9ab;
+	--color-amber: #ffc84a;
+	--color-amber-soft: #e6c65f;
+	--color-amber-dim: #b18d45;
+	--color-purple: #a99af1;
+	--color-red: #e2686f;
+	--color-red-soft: #f0a0a4;
+
+	/* Axis legend / gizmo */
+	--color-axis-x: #ff777b;
+	--color-axis-y: #72e7ac;
+	--color-axis-z: #75bdff;
+
+	/* Responsive breakpoints (max-* variants drive the layout collapse) */
+	--breakpoint-compact: 1040px;
+	--breakpoint-tablet: 820px;
+	--breakpoint-mobile: 520px;
+}
+
 :root {
 	color-scheme: dark;
+}
+
+@layer base {
+	html {
+		background: var(--color-bg);
+	}
+
+	body {
+		min-width: 320px;
+		min-height: 100vh;
+		background: var(--color-bg);
+		color: var(--color-ink);
+		font-family: var(--font-sans);
+	}
+
+	canvas {
+		font: inherit;
+	}
+}
+
+/* -------------------------------------------------------------------------- *
+ * Shared component classes
+ *
+ * Small patterns repeated across every panel. Prefer these over re-deriving
+ * the same rule set in each component's <style> block.
+ * -------------------------------------------------------------------------- */
+@layer components {
+	/* Uppercase micro-label above a heading. Set the colour with a utility. */
+	.u-eyebrow {
+		margin: 0;
+		color: var(--color-ink-4);
+		font-size: 9px;
+		font-weight: 700;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+	}
+
+	/* Small glowing status dot. Drive the colour with a `text-*` utility. */
+	.u-dot {
+		width: 0.375rem;
+		height: 0.375rem;
+		flex: none;
+		border-radius: 9999px;
+		background: currentColor;
+		box-shadow: 0 0 7px currentColor;
+	}
+
+	/* Bordered pill badge (view chip, "Fixed", "Local only" style tags). */
+	.u-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 7px;
+		padding: 6px 9px;
+		border: 1px solid var(--color-line-strong);
+		border-radius: 7px;
+		background: var(--color-elevated);
+		color: var(--color-ink-3);
+		font-size: 10px;
+		font-weight: 600;
+	}
+
+	/* Line-art inline icon. Add `stroke-*` / sizing utilities as needed. */
+	.u-icon {
+		fill: none;
+		stroke: currentColor;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+		stroke-width: 1.5;
+	}
 }
