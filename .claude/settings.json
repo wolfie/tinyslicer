@@ -9,5 +9,12 @@
 	},
 	"enabledPlugins": {
 		"svelte@svelte": true
+	},
+	"permissions": {
+		"allow": [
+			"Bash(pnpm check *)",
+			"Bash(pnpm test *)",
+			"Bash(pnpm lint *)"
+		]
 	}
 }

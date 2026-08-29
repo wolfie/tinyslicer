@@ -12,6 +12,7 @@ import { TINYMAKER_PROFILE } from '$lib/printer/tinymaker';
 import type { ModelSurfaceHit } from '../supports';
 import { BuildVolumeScene } from './build-volume-scene';
 import { ModelInteractionController } from './model-interaction';
+import { PreviewRenderer } from './preview-renderer';
 import { RenderedModel } from './rendered-model';
 import { SupportMarkerRenderer } from './support-marker-renderer';
 import { SupportRenderer } from './support-renderer';
@@ -35,6 +36,7 @@ export class BuildVolumeViewport {
 	#model: RenderedModel;
 	#supports: SupportRenderer;
 	#supportMarkers: SupportMarkerRenderer;
+	#preview: PreviewRenderer;
 	#gizmo: TransformGizmo;
 	#interactions: ModelInteractionController;
 	#pendingState: BuildVolumeRenderState | null = null;
@@ -59,6 +61,7 @@ export class BuildVolumeViewport {
 		this.#model = new RenderedModel(this.#scene);
 		this.#supports = new SupportRenderer(this.#scene);
 		this.#supportMarkers = new SupportMarkerRenderer(this.#scene);
+		this.#preview = new PreviewRenderer(this.#scene);
 		this.#gizmo = new TransformGizmo(this.#scene);
 		this.#interactions = new ModelInteractionController(
 			canvas,
@@ -131,6 +134,7 @@ export class BuildVolumeViewport {
 		this.#model.dispose();
 		this.#supports.dispose();
 		this.#supportMarkers.dispose();
+		this.#preview.dispose();
 		this.#gizmo.dispose();
 		this.#scene.remove(this.#buildVolumeScene.group);
 		this.#buildVolumeScene.dispose();
@@ -140,13 +144,18 @@ export class BuildVolumeViewport {
 	#render(state: BuildVolumeRenderState) {
 		if (state.width <= 0 || state.height <= 0) return;
 		this.#resize(state.width, state.height, state.dpr);
+		const previewing = state.previewMesh !== null;
 		if (this.#model.setModel(state.model)) this.#interactions.cancel();
 		this.#model.setTransform(state.modelTranslation, state.modelRotation);
 		this.#model.setSupportRiskVisible(state.interactionMode === 'place-supports');
+		this.#model.setVisible(!previewing);
 		this.#interactions.setInteractionMode(state.interactionMode);
 		this.#supports.setStructures(state.supportStructures);
+		this.#supports.setVisible(!previewing);
 		this.#supportMarkers.setPoints(state.supportPoints);
 		this.#supportMarkers.setVisible(state.interactionMode === 'place-supports');
+		this.#preview.setMesh(state.previewMesh);
+		this.#preview.setVisible(previewing);
 		this.#buildVolumeScene.setSupportPlateMarginVisible(
 			state.interactionMode === 'transform-model'
 		);

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
+
 	import { TINYMAKER_PROFILE } from '$lib/printer/tinymaker';
 	import DiscardSupportsDialog from '$lib/workspace/DiscardSupportsDialog.svelte';
 	import WorkflowHeader from '$lib/workspace/WorkflowHeader.svelte';
@@ -7,6 +9,7 @@
 	import { WorkspaceState, type WorkflowStep } from '$lib/workspace/workspace-state.svelte';
 
 	const workspace = new WorkspaceState();
+	onDestroy(() => workspace.previewBuild.dispose());
 	let importState = $state<'idle' | 'loading' | 'error'>('idle');
 	let importError = $state('');
 	let isDraggingFile = $state(false);
@@ -139,11 +142,19 @@
 			supportPointCount={workspace.supportPoints.length}
 			supportPoints={workspace.supportPoints}
 			supportStructures={workspace.supportPlan.structures}
+			previewStatus={workspace.previewBuild.status}
+			previewProgress={workspace.previewBuild.progress}
+			previewMesh={workspace.previewBuild.mesh}
+			previewLayerCount={workspace.previewBuild.layerCount}
+			previewZHeightMm={workspace.previewBuild.zHeightMm}
+			previewWatertight={workspace.previewBuild.watertight}
+			previewError={workspace.previewBuild.error}
 			onTranslationChange={workspace.setModelTranslation}
 			onRotationChange={workspace.setModelRotation}
 			onSupportPointPlaced={(hit) => workspace.addSupportPoint(hit)}
 			onEnterSupports={() => requestStep('supports')}
 			onBackToPrepare={() => requestStep('prepare')}
+			onBackToSupports={() => requestStep('supports')}
 		/>
 
 		<aside class="properties" aria-label="Scene properties">
@@ -190,6 +201,34 @@
 								<strong>{workspace.supportPoints.length}</strong>
 								<small
 									>{workspace.supportPoints.length === 1 ? 'point placed' : 'points placed'}</small
+								>
+							</div>
+						{:else if workspace.step === 'preview'}
+							<div class="support-mode-summary preview-summary">
+								<div class="support-mode-heading"><span></span>Sliced preview</div>
+								{#if workspace.previewBuild.status === 'building'}
+									<p>
+										Reconstructing the printed result from 0.05 mm layers…
+										{Math.round(workspace.previewBuild.progress * 100)}%
+									</p>
+								{:else if workspace.previewBuild.status === 'error'}
+									<p>
+										{workspace.previewBuild.error ?? 'The sliced preview could not be generated.'}
+									</p>
+								{:else}
+									<p>Model and supports fused into one immutable, voxel-accurate solid.</p>
+									{#if workspace.previewBuild.status === 'ready' && !workspace.previewBuild.watertight}
+										<p>
+											The sampled mesh was not watertight, so the preview may differ from the
+											printed part.
+										</p>
+									{/if}
+								{/if}
+								<strong>{workspace.previewBuild.layerCount || '—'}</strong>
+								<small
+									>{workspace.previewBuild.layerCount === 1 ? 'layer' : 'layers'} · Z 0–{formatMillimetres(
+										workspace.previewBuild.zHeightMm
+									)} mm</small
 								>
 							</div>
 						{/if}

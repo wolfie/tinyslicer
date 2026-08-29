@@ -32,6 +32,10 @@ export class SupportRenderer {
 		scene.add(this.#group);
 	}
 
+	setVisible(visible: boolean) {
+		this.#group.visible = visible;
+	}
+
 	setStructures(structures: readonly SupportStructure[]) {
 		if (structures === this.#currentStructures) return;
 		this.#currentStructures = structures;

@@ -27,4 +27,5 @@ export type BuildVolumeRenderState = {
 	interactionMode: BuildVolumeInteractionMode;
 	supportPoints: readonly SupportPoint[];
 	supportStructures: readonly SupportStructure[];
+	previewMesh: { positions: Float32Array; normals: Float32Array } | null;
 };

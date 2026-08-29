@@ -22,7 +22,7 @@
 
 	function stepEnabled(step: WorkflowStep): boolean {
 		if (step === 'prepare') return true;
-		if (step === 'supports') return canEnterSupports;
+		if (step === 'supports' || step === 'preview') return canEnterSupports;
 		return false;
 	}
 </script>

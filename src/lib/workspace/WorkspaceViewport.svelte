@@ -19,6 +19,7 @@
 	import { OrbitCamera } from './orbit-camera.svelte';
 	import type { Bounds3, ImportedStlModel } from './stl-importer';
 	import type { ModelSurfaceHit, SupportPoint, SupportStructure } from './supports';
+	import type { PreviewBuildStatus, PreviewMeshData } from './preview-state.svelte';
 
 	type Props = {
 		model: ImportedStlModel | null;
@@ -32,11 +33,19 @@
 		supportPointCount: number;
 		supportPoints: readonly SupportPoint[];
 		supportStructures: readonly SupportStructure[];
+		previewStatus: PreviewBuildStatus;
+		previewProgress: number;
+		previewMesh: PreviewMeshData | null;
+		previewLayerCount: number;
+		previewZHeightMm: number;
+		previewWatertight: boolean;
+		previewError: string | null;
 		onTranslationChange: (translation: ModelTranslation) => void;
 		onRotationChange: (rotation: ModelRotation) => void;
 		onSupportPointPlaced: (hit: ModelSurfaceHit) => void;
 		onEnterSupports: () => void;
 		onBackToPrepare: () => void;
+		onBackToSupports: () => void;
 	};
 
 	let {
@@ -51,17 +60,27 @@
 		supportPointCount,
 		supportPoints,
 		supportStructures,
+		previewStatus,
+		previewProgress,
+		previewMesh,
+		previewLayerCount,
+		previewZHeightMm,
+		previewWatertight,
+		previewError,
 		onTranslationChange,
 		onRotationChange,
 		onSupportPointPlaced,
 		onEnterSupports,
-		onBackToPrepare
+		onBackToPrepare,
+		onBackToSupports
 	}: Props = $props();
 
 	const camera = new OrbitCamera();
 	const canvasMetrics = new CanvasMetrics();
 	let modelInteraction = $state<ModelInteraction | null>(null);
 	let placingSupports = $derived(interactionMode === 'place-supports');
+	let previewing = $derived(interactionMode === 'readonly');
+	let previewPercent = $derived(Math.round(previewProgress * 100));
 
 	function focusFirstClippedRegion() {
 		if (!transformedModelBounds) return;
@@ -113,12 +132,17 @@
 	<div class="viewport-heading">
 		<div>
 			<p class="eyebrow">3D workspace</p>
-			<h1>{placingSupports ? 'Place supports' : 'Build volume'}</h1>
+			<h1>{previewing ? 'Sliced preview' : placingSupports ? 'Place supports' : 'Build volume'}</h1>
 		</div>
 		{#if placingSupports}
 			<button type="button" class="back-button" onclick={onBackToPrepare}>
 				<svg viewBox="0 0 18 18" aria-hidden="true"><path d="m11.5 4-5 5 5 5" /></svg>
 				Back to Prepare
+			</button>
+		{:else if previewing}
+			<button type="button" class="back-button" onclick={onBackToSupports}>
+				<svg viewBox="0 0 18 18" aria-hidden="true"><path d="m11.5 4-5 5 5 5" /></svg>
+				Back to Supports
 			</button>
 		{:else}
 			<div class="view-chip"><span></span> Perspective</div>
@@ -149,7 +173,8 @@
 				modelRotation,
 				interactionMode,
 				supportPoints,
-				supportStructures
+				supportStructures,
+				previewMesh: previewStatus === 'ready' ? previewMesh : null
 			})}
 			onpointerdown={handlePointerDown}
 			onpointermove={handlePointerMove}
@@ -188,11 +213,13 @@
 						? 'Moving model'
 						: camera.orbiting
 							? 'Orbiting view'
-							: placingSupports
-								? 'Click model to place · Middle-drag to orbit'
-								: model
-									? `Drag rings to rotate · ${ROTATION_SNAP_DEGREES}° snap · Shift for free`
-									: 'Middle-drag to orbit'}
+							: previewing
+								? 'Preview is read-only · Drag to orbit'
+								: placingSupports
+									? 'Click model to place · Middle-drag to orbit'
+									: model
+										? `Drag rings to rotate · ${ROTATION_SNAP_DEGREES}° snap · Shift for free`
+										: 'Middle-drag to orbit'}
 			</span>
 		</div>
 		{#if modelOutsideBuildVolume || (interactionMode === 'transform-model' && canEnterSupports)}
@@ -244,6 +271,32 @@
 			<p class="support-count" aria-live="polite">
 				<span></span>{supportPointCount} support {supportPointCount === 1 ? 'point' : 'points'} placed
 			</p>
+		{/if}
+		{#if previewing}
+			{#if previewStatus === 'building'}
+				<div class="preview-status building" role="status" aria-live="polite">
+					<div class="preview-progress-track">
+						<div class="preview-progress-bar" style:width={`${previewPercent}%`}></div>
+					</div>
+					<span>Reconstructing sliced result · {previewPercent}%</span>
+				</div>
+			{:else if previewStatus === 'error'}
+				<div class="preview-status error" role="alert">
+					<strong>Preview failed</strong>
+					<span>{previewError ?? 'The sliced preview could not be generated.'}</span>
+				</div>
+			{:else if previewStatus === 'ready'}
+				<div class="preview-status ready" role="status">
+					<span
+						>{previewLayerCount} layers · Z 0–{previewZHeightMm.toFixed(2)} mm · voxel-accurate</span
+					>
+					{#if !previewWatertight}
+						<span class="preview-warn"
+							>Mesh was not watertight at sampled pixels — the preview may differ from the print.</span
+						>
+					{/if}
+				</div>
+			{/if}
 		{/if}
 	</div>
 </section>
@@ -587,6 +640,57 @@
 		border-radius: 50%;
 		background: #57dc8b;
 		box-shadow: 0 0 7px rgba(87, 220, 139, 0.72);
+	}
+	.preview-status {
+		position: absolute;
+		right: 17px;
+		bottom: 17px;
+		display: flex;
+		flex-direction: column;
+		gap: 5px;
+		width: min(300px, calc(100% - 34px));
+		padding: 9px 11px;
+		border: 1px solid rgba(120, 150, 185, 0.32);
+		border-radius: 8px;
+		background: rgba(12, 20, 30, 0.86);
+		backdrop-filter: blur(8px);
+		color: #9fb2c6;
+		font-size: 10px;
+		font-weight: 600;
+		pointer-events: none;
+	}
+	.preview-status.ready {
+		border-color: rgba(120, 200, 255, 0.32);
+		color: #a7d4f2;
+	}
+	.preview-status.error {
+		border-color: rgba(226, 94, 102, 0.4);
+		background: rgba(48, 18, 20, 0.9);
+		color: #f0a0a4;
+	}
+	.preview-status strong {
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.02em;
+		text-transform: uppercase;
+	}
+	.preview-warn {
+		color: #e6c65f;
+		font-weight: 500;
+		line-height: 1.35;
+	}
+	.preview-progress-track {
+		width: 100%;
+		height: 4px;
+		overflow: hidden;
+		border-radius: 999px;
+		background: rgba(120, 150, 185, 0.22);
+	}
+	.preview-progress-bar {
+		height: 100%;
+		border-radius: 999px;
+		background: linear-gradient(90deg, #4d9fd6, #7ad0ff);
+		transition: width 160ms ease;
 	}
 	.mouse-icon {
 		position: relative;

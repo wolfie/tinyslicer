@@ -8,6 +8,17 @@ import type { ImportedStlModel } from './stl-importer';
 
 const noop = () => {};
 
+const previewProps = {
+	previewStatus: 'idle' as const,
+	previewProgress: 0,
+	previewMesh: null,
+	previewLayerCount: 0,
+	previewZHeightMm: 0,
+	previewWatertight: true,
+	previewError: null,
+	onBackToSupports: noop
+};
+
 function modelWithinBuildVolume(): ImportedStlModel {
 	return {
 		name: 'model.stl',
@@ -56,7 +67,8 @@ describe('workflow UI', () => {
 			onRotationChange: noop,
 			onSupportPointPlaced: noop,
 			onEnterSupports: noop,
-			onBackToPrepare: noop
+			onBackToPrepare: noop,
+			...previewProps
 		};
 
 		const valid = render(WorkspaceViewport, {
@@ -112,13 +124,70 @@ describe('workflow UI', () => {
 				onRotationChange: noop,
 				onSupportPointPlaced: noop,
 				onEnterSupports: noop,
-				onBackToPrepare: noop
+				onBackToPrepare: noop,
+				...previewProps
 			}
 		});
 
 		expect(body).toContain('Place supports');
 		expect(body).toContain('Back to Prepare');
 		expect(body).toContain('0 support points placed');
+		expect(body).not.toContain('Add supports');
+	});
+
+	it('enables the Preview step once a model fits the build volume', () => {
+		const disabled = render(WorkflowHeader, {
+			props: {
+				currentStep: 'prepare',
+				canEnterSupports: false,
+				importing: false,
+				onStepRequest: noop,
+				onFileSelection: noop
+			}
+		}).body;
+		expect(disabled).toMatch(/disabled=""><b[^>]*>3<\/b>Preview/);
+
+		const enabled = render(WorkflowHeader, {
+			props: {
+				currentStep: 'supports',
+				canEnterSupports: true,
+				importing: false,
+				onStepRequest: noop,
+				onFileSelection: noop
+			}
+		}).body;
+		expect(enabled).not.toMatch(/disabled=""><b[^>]*>3<\/b>Preview/);
+	});
+
+	it('shows read-only sliced-preview status in the viewport', () => {
+		const model = modelWithinBuildVolume();
+		const { body } = render(WorkspaceViewport, {
+			props: {
+				model,
+				modelTranslation: { x: 0, y: 0, z: 0 },
+				modelRotation: { x: 0, y: 0, z: 0, w: 1 },
+				transformedModelBounds: model.bounds,
+				modelOutsideBuildVolume: false,
+				modelOverlapsSupportMargin: false,
+				canEnterSupports: true,
+				interactionMode: 'readonly',
+				supportPointCount: 0,
+				supportPoints: [],
+				supportStructures: [],
+				onTranslationChange: noop,
+				onRotationChange: noop,
+				onSupportPointPlaced: noop,
+				onEnterSupports: noop,
+				onBackToPrepare: noop,
+				...previewProps,
+				previewStatus: 'building',
+				previewProgress: 0.5
+			}
+		});
+
+		expect(body).toContain('Sliced preview');
+		expect(body).toContain('Back to Supports');
+		expect(body).toContain('Reconstructing sliced result · 50%');
 		expect(body).not.toContain('Add supports');
 	});
 

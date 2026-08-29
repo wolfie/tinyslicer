@@ -203,6 +203,57 @@ describe('workspace workflow', () => {
 		expect(workspace.supportPoints).toEqual([]);
 	});
 
+	it('gates the Preview step on the same rule as Supports', () => {
+		const workspace = new WorkspaceState();
+		expect(workspace.canNavigateTo('preview')).toBe(false);
+
+		workspace.setModel(modelWithinBuildVolume());
+		expect(workspace.canNavigateTo('preview')).toBe(true);
+
+		workspace.setModelTranslation({ x: TINYMAKER_PROFILE.buildVolume.x, y: 0, z: 0 });
+		expect(workspace.canNavigateTo('preview')).toBe(false);
+		expect(workspace.requestStep('preview')).toBe(false);
+	});
+
+	it('generates the initial supports once when Preview is entered straight from Prepare', () => {
+		const workspace = new WorkspaceState();
+		workspace.setModel(floatingBoxModel());
+
+		expect(workspace.requestStep('preview')).toBe(true);
+		expect(workspace.step).toBe('preview');
+		expect(workspace.supportPoints.length).toBeGreaterThan(0);
+
+		const ids = workspace.supportPoints.map((point) => point.id);
+		expect(workspace.requestStep('supports')).toBe(true);
+		expect(workspace.supportPoints.map((point) => point.id)).toEqual(ids);
+	});
+
+	it('moves freely between Preview and Supports but guards the return to Prepare', () => {
+		const workspace = new WorkspaceState();
+		workspace.setModel(modelWithinBuildVolume());
+		workspace.requestStep('supports');
+		workspace.addSupportPoint({ position: { x: 12, y: 14, z: 5 }, normal: { x: 0, y: 0, z: 1 } });
+
+		expect(workspace.requestStep('preview')).toBe(true);
+		expect(workspace.requestStep('supports')).toBe(true);
+		expect(workspace.requestStep('preview')).toBe(true);
+
+		expect(workspace.requestStep('prepare')).toBe(false);
+		expect(workspace.step).toBe('preview');
+		expect(workspace.discardSupportsDialogOpen).toBe(true);
+	});
+
+	it('clears any sliced preview when a new model is loaded', () => {
+		const workspace = new WorkspaceState();
+		workspace.setModel(modelWithinBuildVolume());
+		workspace.requestStep('preview');
+
+		workspace.setModel({ ...modelWithinBuildVolume(), name: 'replacement.stl' });
+
+		expect(workspace.previewBuild.status).toBe('idle');
+		expect(workspace.previewBuild.mesh).toBeNull();
+	});
+
 	it('returns directly to prepare when no supports were placed', () => {
 		const workspace = new WorkspaceState();
 		workspace.setModel(modelWithinBuildVolume());

@@ -151,6 +151,12 @@ export class RenderedModel {
 		if (visible && this.#supportRiskGeometryDirty) this.#refreshSupportRiskGeometry();
 	}
 
+	setVisible(visible: boolean) {
+		if (this.#modelMesh) this.#modelMesh.visible = visible;
+		if (this.#outsideModelMesh) this.#outsideModelMesh.visible = visible;
+		if (!visible && this.#supportRiskMesh) this.#supportRiskMesh.visible = false;
+	}
+
 	dispose() {
 		this.#removeMeshes();
 		this.#modelMaterial.dispose();
