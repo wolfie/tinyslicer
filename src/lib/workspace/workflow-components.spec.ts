@@ -9,6 +9,7 @@ import type { ImportedStlModel } from './stl-importer';
 const noop = () => {};
 
 const previewProps = {
+	raftIslands: [],
 	autoSupportStatus: 'idle' as const,
 	autoSupportProgress: 0,
 	previewStatus: 'idle' as const,

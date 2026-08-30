@@ -1,3 +1,4 @@
+import type { RaftIsland } from '$lib/supports/raft-plan';
 import type { ImportedStlModel, Point3 } from '../stl-importer';
 import type { SupportPoint, SupportStructure } from '../supports';
 
@@ -27,5 +28,6 @@ export type BuildVolumeRenderState = {
 	interactionMode: BuildVolumeInteractionMode;
 	supportPoints: readonly SupportPoint[];
 	supportStructures: readonly SupportStructure[];
+	raftIslands: readonly RaftIsland[];
 	previewMesh: { positions: Float32Array; normals: Float32Array } | null;
 };

@@ -140,6 +140,7 @@
 			supportPointCount={workspace.supportPoints.length}
 			supportPoints={workspace.supportPoints}
 			supportStructures={workspace.supportPlan.structures}
+			raftIslands={workspace.raftPlan.islands}
 			autoSupportStatus={workspace.autoSupportBuild.status}
 			autoSupportProgress={workspace.autoSupportBuild.progress}
 			previewStatus={workspace.previewBuild.status}

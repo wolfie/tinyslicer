@@ -11,7 +11,8 @@ worker.onmessage = (event: MessageEvent<PreviewMeshRequest>) => {
 				model: { positions: request.positions, bounds: request.bounds },
 				translation: request.translation,
 				rotation: request.rotation,
-				supportPlan: request.supportPlan
+				supportPlan: request.supportPlan,
+				raftIslands: request.raftIslands
 			},
 			(completed, total) => {
 				post({ type: 'progress', id: request.id, completed, total });

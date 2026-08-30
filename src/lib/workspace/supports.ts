@@ -1,4 +1,5 @@
 import { TINYMAKER_PROFILE } from '$lib/printer/tinymaker';
+import { RAFT_CORE_HEIGHT_MM } from '$lib/supports/raft-plan';
 import type { Bounds3, Point3 } from './stl-importer';
 
 export const SUPPORT_SHAFT_DIAMETER_MM = 1.275;
@@ -101,6 +102,12 @@ export function supportNeckBase(point: ModelSurfaceHit): Point3 {
 	};
 }
 
+/** Where a plate-anchored post meets the plate, used to cluster feet into rafts. */
+export function supportFootCenter(point: ModelSurfaceHit): Point3 {
+	const neckBase = supportNeckBase(point);
+	return { x: neckBase.x, y: neckBase.y, z: 0 };
+}
+
 export function doesModelProjectionOverlapSupportMargin(bounds: Bounds3): boolean {
 	return (
 		bounds.min.x < SUPPORT_PLATE_EDGE_MARGIN_MM + SUPPORT_GEOMETRY_EPSILON_MM ||
@@ -123,7 +130,10 @@ export function isSupportFootInsideBuildPlate(point: ModelSurfaceHit): boolean {
 	);
 }
 
-export function createPostSupportStructure(point: SupportPoint): SupportStructure | null {
+export function createPostSupportStructure(
+	point: SupportPoint,
+	raftBaseZMm = 0
+): SupportStructure | null {
 	const neckBase = supportNeckBase(point);
 
 	if (point.lowerContactPosition) {
@@ -174,6 +184,38 @@ export function createPostSupportStructure(point: SupportPoint): SupportStructur
 	}
 
 	if (!isSupportFootInsideBuildPlate(point)) return null;
+
+	// On a raft the flared foot is dropped: the raft slab is the plate contact and
+	// the shaft rises straight from its top surface.
+	if (raftBaseZMm > SUPPORT_GEOMETRY_EPSILON_MM) {
+		if (neckBase.z <= raftBaseZMm + SUPPORT_GEOMETRY_EPSILON_MM) return null;
+		return {
+			id: `post:${point.id}`,
+			pointIds: [point.id],
+			parts: [
+				{
+					kind: 'shaft',
+					start: { x: neckBase.x, y: neckBase.y, z: raftBaseZMm },
+					end: { ...neckBase },
+					startDiameter: SUPPORT_SHAFT_DIAMETER_MM,
+					endDiameter: SUPPORT_SHAFT_DIAMETER_MM
+				},
+				{
+					kind: 'junction',
+					center: { ...neckBase },
+					diameter: SUPPORT_JUNCTION_DIAMETER_MM
+				},
+				{
+					kind: 'neck',
+					start: { ...neckBase },
+					end: { ...point.position },
+					startDiameter: SUPPORT_NECK_DIAMETER_MM,
+					endDiameter: SUPPORT_CONTACT_DIAMETER_MM
+				}
+			]
+		};
+	}
+
 	if (neckBase.z <= SUPPORT_FOOT_HEIGHT_MM + SUPPORT_GEOMETRY_EPSILON_MM) return null;
 
 	return {
@@ -210,12 +252,16 @@ export function createPostSupportStructure(point: SupportPoint): SupportStructur
 	};
 }
 
-export function generateSupportPlan(points: readonly SupportPoint[]): SupportPlan {
+export function generateSupportPlan(
+	points: readonly SupportPoint[],
+	raftedSupportPointIds: ReadonlySet<string> = new Set()
+): SupportPlan {
 	const structures: SupportStructure[] = [];
 	const unresolvedPoints: UnresolvedSupportPoint[] = [];
 
 	for (const point of points) {
-		const structure = createPostSupportStructure(point);
+		const raftBaseZMm = raftedSupportPointIds.has(point.id) ? RAFT_CORE_HEIGHT_MM : 0;
+		const structure = createPostSupportStructure(point, raftBaseZMm);
 		if (structure) {
 			structures.push(structure);
 		} else {

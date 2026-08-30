@@ -138,6 +138,51 @@ The support should use the picked surface normal to choose a sensible contact di
 
 Supports are independent scene objects. A costly 3D boolean union with the STL is not required; their cross-sections can be combined with the model at rasterization time.
 
+### 7.3 Automatic rafts
+
+Rafts are derived from the support set, not placed by hand. They are recomputed
+from scratch whenever the support set changes — after automatic generation and
+after every manual add, move, or delete — the same way the support plan is.
+
+- **Clustering.** Only plate-anchored supports (those with a flared foot, not
+  model-to-model posts) take part. Their foot centres — the point where the
+  vertical shaft would meet the plate — are single-linkage clustered: two feet
+  join the same cluster when their centres are within `RAFT_BINDING_DISTANCE_MM`
+  (7 mm), transitively. Clusters smaller than `RAFT_MIN_ISLAND_SUPPORTS` (2) get
+  no raft and keep their normal foot.
+- **Core slab.** Each qualifying cluster becomes one raft island. Its core is the
+  convex hull of the member foot centres rounded outward by `RAFT_CORE_RADIUS_MM`
+  (1.5 mm), extruded `RAFT_CORE_LAYER_COUNT` layers (6 × 0.05 = 0.30 mm) as a
+  flat slab — just enough to bond the feet and the plate. Member supports drop
+  their foot and start the shaft at the slab top.
+- **Removable rim.** Around the core perimeter runs a rim that leans up and
+  outward at `RAFT_BRIM_ANGLE_DEGREES` (45°) for `RAFT_BRIM_WIDTH_MM` (1.5 mm),
+  like the brim of a dinner plate. Its underside is a 45° overhang (self-
+  supporting in resin), so there is a wedge of air between the rim and the plate:
+  a scraper slides into that wedge, catches the rim, and levers the raft — and
+  the model — off. The rim is dropped entirely on an island whose core comes
+  within `RAFT_BRIM_WIDTH_MM + RAFT_BRIM_PLATE_CLEARANCE_MM` of a plate wall
+  (it leans outward and would otherwise run off the plate); such an island prints
+  as a bare slab.
+- **Plate margin.** The rim only ever leans toward the plate interior, and its
+  clamp keeps it clear of every wall, so a raft never needs more plate-edge
+  clearance than the lone-support case already reserves in
+  `SUPPORT_PLATE_EDGE_MARGIN_MM`; that constant is unchanged. A future check on
+  the assembled raft footprint (rather than the per-foot proxy) is still worth
+  adding to guard against tuning that pushes the core past the foot radius.
+- **Slicing.** `raftCrossSectionAtZ` returns the island's filled rings at any
+  height — one solid ring up to the core height, then an outer ring plus a hole
+  once only the rim survives, marching outward until it closes.
+  `LayerCoverageRasterizer` composites those rings into the supersampled mask
+  with even-odd parity for every layer the raft reaches, exactly alongside the
+  model and the support cross-sections, so the sliced preview and the PNG export
+  show the raft identically. Nothing else special-cases the raft in slicing — it
+  is just more printable area.
+
+All raft geometry lives in framework-free modules with co-located tests
+(`src/lib/supports/raft-plan.ts`, `raft-geometry.ts`); the renderer and the
+rasteriser only consume `RaftIsland`s.
+
 ## 8. Slicing
 
 ### 8.1 Layer enumeration

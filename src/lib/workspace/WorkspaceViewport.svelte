@@ -19,6 +19,7 @@
 	import { OrbitCamera } from './orbit-camera.svelte';
 	import type { Bounds3, ImportedStlModel } from './stl-importer';
 	import type { ModelSurfaceHit, SupportPoint, SupportStructure } from './supports';
+	import type { RaftIsland } from '$lib/supports/raft-plan';
 	import type { AutoSupportBuildStatus } from './auto-support-state.svelte';
 	import type { PreviewBuildStatus, PreviewMeshData } from './preview-state.svelte';
 
@@ -34,6 +35,7 @@
 		supportPointCount: number;
 		supportPoints: readonly SupportPoint[];
 		supportStructures: readonly SupportStructure[];
+		raftIslands: readonly RaftIsland[];
 		autoSupportStatus: AutoSupportBuildStatus;
 		autoSupportProgress: number;
 		previewStatus: PreviewBuildStatus;
@@ -64,6 +66,7 @@
 		supportPointCount,
 		supportPoints,
 		supportStructures,
+		raftIslands,
 		autoSupportStatus,
 		autoSupportProgress,
 		previewStatus,
@@ -211,6 +214,7 @@
 				interactionMode,
 				supportPoints,
 				supportStructures,
+				raftIslands,
 				previewMesh: previewStatus === 'ready' ? previewMesh : null
 			})}
 			onpointerdown={handlePointerDown}

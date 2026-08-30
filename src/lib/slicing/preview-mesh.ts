@@ -1,3 +1,4 @@
+import type { RaftIsland } from '$lib/supports/raft-plan';
 import type { ModelRotation, ModelTranslation } from '$lib/workspace/build-volume-renderer/types';
 import type { ImportedStlModel } from '$lib/workspace/stl-importer';
 import type { SupportPlan } from '$lib/workspace/supports';
@@ -12,6 +13,7 @@ export type PreviewMeshInput = {
 	translation: ModelTranslation;
 	rotation: ModelRotation;
 	supportPlan: SupportPlan;
+	raftIslands?: readonly RaftIsland[];
 };
 
 export type PreviewMeshResult = {
@@ -50,6 +52,7 @@ export function buildPreviewMesh(
 		input.translation,
 		input.rotation,
 		input.supportPlan,
+		input.raftIslands ?? [],
 		options.profile,
 		options.supersample
 	);

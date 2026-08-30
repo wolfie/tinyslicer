@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { generateRaftPlan } from '$lib/supports/raft-plan';
 import type { Bounds3 } from '$lib/workspace/stl-importer';
 import type { SupportPlan } from '$lib/workspace/supports';
 import { LayerCoverageRasterizer, PREVIEW_SUPERSAMPLE } from './layer-coverage';
@@ -72,6 +73,7 @@ describe('LayerCoverageRasterizer', () => {
 			undefined,
 			undefined,
 			NO_SUPPORTS,
+			[],
 			PROFILE
 		);
 		const mask = rasterizer.coverageMask(0);
@@ -90,6 +92,7 @@ describe('LayerCoverageRasterizer', () => {
 			undefined,
 			undefined,
 			NO_SUPPORTS,
+			[],
 			PROFILE
 		);
 		const step = 1 / (PREVIEW_SUPERSAMPLE * PREVIEW_SUPERSAMPLE);
@@ -124,6 +127,7 @@ describe('LayerCoverageRasterizer', () => {
 			undefined,
 			undefined,
 			NO_SUPPORTS,
+			[],
 			PROFILE
 		).coverageMask(0);
 		const withSupports = new LayerCoverageRasterizer(
@@ -131,12 +135,62 @@ describe('LayerCoverageRasterizer', () => {
 			undefined,
 			undefined,
 			plan,
+			[],
 			PROFILE
 		).coverageMask(0);
 
 		const shaftPixel = 6 * 8 + 6;
 		expect(withoutSupports.data[shaftPixel]).toBe(0);
 		expect(withSupports.data[shaftPixel]).toBe(1);
+	});
+
+	it('fills raft cross-sections into the coverage — solid core, then a rim ring', () => {
+		const FINE_PROFILE: LayerMaskRasterizationProfile = {
+			resolution: { x: 16, y: 16 },
+			buildAreaMm: { x: 8, y: 8 },
+			layerHeightMm: 0.1
+		};
+		const box = model(boxPositions([0.5, 0.5, 0], [1.5, 1.5, 2.5])); // clear of the island
+		const islands = generateRaftPlan(
+			[
+				{ id: 'support-point-1', center: { x: 3, y: 4 } },
+				{ id: 'support-point-2', center: { x: 5, y: 4 } }
+			],
+			{ buildVolume: { x: 8, y: 8 } }
+		).islands;
+		expect(islands).toHaveLength(1);
+		expect(islands[0].brimWidthMm).toBeGreaterThan(0);
+
+		const centre = 8 * 16 + 8; // pixel centre ~(4.25, 4.25) mm, over the island
+		const bare = new LayerCoverageRasterizer(
+			box,
+			undefined,
+			undefined,
+			NO_SUPPORTS,
+			[],
+			FINE_PROFILE
+		);
+		const rafted = new LayerCoverageRasterizer(
+			box,
+			undefined,
+			undefined,
+			NO_SUPPORTS,
+			islands,
+			FINE_PROFILE
+		);
+		const filled = (mask: { data: Float32Array }) =>
+			mask.data.reduce((sum, value) => sum + (value > 0 ? 1 : 0), 0);
+
+		// core-slab layer (z = 0.1 mm): a solid disc over the island
+		expect(bare.coverageMask(0).data[centre]).toBe(0);
+		expect(rafted.coverageMask(0).data[centre]).toBe(1);
+
+		// rim-only layer (z = 0.6 mm): the centre is the rim's hole, the ring still prints
+		expect(rafted.coverageMask(5).data[centre]).toBe(0);
+		expect(filled(rafted.coverageMask(5))).toBeGreaterThan(0);
+
+		// above the rim (z = 1.4 mm): the raft contributes nothing
+		expect(filled(rafted.coverageMask(13))).toBe(filled(bare.coverageMask(13)));
 	});
 
 	it('enumerates layers exactly like the underlying mask rasterizer', () => {
@@ -146,6 +200,7 @@ describe('LayerCoverageRasterizer', () => {
 			undefined,
 			undefined,
 			NO_SUPPORTS,
+			[],
 			PROFILE
 		);
 		const binary = new ModelLayerMaskRasterizer(model(positions), undefined, undefined, PROFILE);
@@ -162,6 +217,7 @@ describe('LayerCoverageRasterizer', () => {
 			undefined,
 			undefined,
 			NO_SUPPORTS,
+			[],
 			PROFILE
 		);
 		expect(closed.diagnostics.meshIsWatertightAtPixelSamples).toBe(true);
@@ -171,6 +227,7 @@ describe('LayerCoverageRasterizer', () => {
 			undefined,
 			undefined,
 			NO_SUPPORTS,
+			[],
 			PROFILE
 		);
 		expect(open.diagnostics.meshIsWatertightAtPixelSamples).toBe(false);
@@ -184,6 +241,7 @@ describe('LayerCoverageRasterizer', () => {
 					undefined,
 					undefined,
 					NO_SUPPORTS,
+					[],
 					PROFILE,
 					1.5
 				)

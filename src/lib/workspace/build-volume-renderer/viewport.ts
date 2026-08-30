@@ -13,6 +13,7 @@ import type { ModelSurfaceHit } from '../supports';
 import { BuildVolumeScene } from './build-volume-scene';
 import { ModelInteractionController } from './model-interaction';
 import { PreviewRenderer } from './preview-renderer';
+import { RaftRenderer } from './raft-renderer';
 import { RenderedModel } from './rendered-model';
 import { SupportMarkerRenderer } from './support-marker-renderer';
 import { SupportRenderer } from './support-renderer';
@@ -35,6 +36,7 @@ export class BuildVolumeViewport {
 	#buildVolumeScene = new BuildVolumeScene();
 	#model: RenderedModel;
 	#supports: SupportRenderer;
+	#rafts: RaftRenderer;
 	#supportMarkers: SupportMarkerRenderer;
 	#preview: PreviewRenderer;
 	#gizmo: TransformGizmo;
@@ -60,6 +62,7 @@ export class BuildVolumeViewport {
 
 		this.#model = new RenderedModel(this.#scene);
 		this.#supports = new SupportRenderer(this.#scene);
+		this.#rafts = new RaftRenderer(this.#scene);
 		this.#supportMarkers = new SupportMarkerRenderer(this.#scene);
 		this.#preview = new PreviewRenderer(this.#scene);
 		this.#gizmo = new TransformGizmo(this.#scene);
@@ -133,6 +136,7 @@ export class BuildVolumeViewport {
 		this.#interactions.cancel();
 		this.#model.dispose();
 		this.#supports.dispose();
+		this.#rafts.dispose();
 		this.#supportMarkers.dispose();
 		this.#preview.dispose();
 		this.#gizmo.dispose();
@@ -152,6 +156,8 @@ export class BuildVolumeViewport {
 		this.#interactions.setInteractionMode(state.interactionMode);
 		this.#supports.setStructures(state.supportStructures);
 		this.#supports.setVisible(!previewing);
+		this.#rafts.setIslands(state.raftIslands);
+		this.#rafts.setVisible(!previewing);
 		this.#supportMarkers.setPoints(state.supportPoints);
 		this.#supportMarkers.setVisible(state.interactionMode === 'place-supports');
 		this.#preview.setMesh(state.previewMesh);

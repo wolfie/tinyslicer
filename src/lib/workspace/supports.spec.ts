@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { generateRaftPlan, RAFT_CORE_HEIGHT_MM } from '$lib/supports/raft-plan';
 import {
 	createPostSupportStructure,
 	generateSupportPlan,
@@ -12,6 +13,7 @@ import {
 	SUPPORT_NECK_DIAMETER_MM,
 	SUPPORT_NECK_LENGTH_MM,
 	SUPPORT_PLATE_EDGE_MARGIN_MM,
+	supportFootCenter,
 	supportNeckDirection
 } from './supports';
 
@@ -189,5 +191,72 @@ describe('support post layout', () => {
 		expect(plan.structures).toHaveLength(1);
 		expect(plan.structures[0].pointIds).toEqual([point.id]);
 		expect(point).toEqual(original);
+	});
+});
+
+describe('rafted supports', () => {
+	function downwardContact(id: string, x: number, y: number, z = 10) {
+		return { id, position: { x, y, z }, normal: { x: 0, y: 0, z: -1 } };
+	}
+
+	it('projects the foot centre onto the plate under the neck base', () => {
+		const centre = supportFootCenter(downwardContact('support-point-1', 12, 14));
+		expect(centre).toEqual({ x: 12, y: 14, z: 0 });
+	});
+
+	it('drops the flared foot and starts the shaft at the raft top', () => {
+		const structure = createPostSupportStructure(
+			downwardContact('support-point-1', 12, 14),
+			RAFT_CORE_HEIGHT_MM
+		);
+		const kinds = structure?.parts.map((part) => part.kind);
+
+		expect(kinds).toEqual(['shaft', 'junction', 'neck']);
+		expect(structure?.parts[0]).toMatchObject({
+			kind: 'shaft',
+			start: { x: 12, y: 14, z: RAFT_CORE_HEIGHT_MM }
+		});
+	});
+
+	it('rejects a rafted post whose contact sits at or below the raft top', () => {
+		expect(
+			createPostSupportStructure(
+				downwardContact('support-point-1', 12, 14, 1.6),
+				RAFT_CORE_HEIGHT_MM
+			)
+		).toBeNull();
+	});
+
+	it('rafts nearby plate contacts and keeps distant ones on their own feet', () => {
+		const points = [
+			downwardContact('support-point-1', 14, 15),
+			downwardContact('support-point-2', 19, 15),
+			downwardContact('support-point-3', 35, 15)
+		];
+		const raftPlan = generateRaftPlan(
+			points.map((point) => ({ id: point.id, center: supportFootCenter(point) }))
+		);
+		expect(raftPlan.islands).toHaveLength(1);
+		expect(raftPlan.raftedSupportPointIds).toEqual(new Set(['support-point-1', 'support-point-2']));
+
+		const plan = generateSupportPlan(points, raftPlan.raftedSupportPointIds);
+		const partKinds = Object.fromEntries(
+			plan.structures.map((structure) => [
+				structure.pointIds[0],
+				structure.parts.map((p) => p.kind)
+			])
+		);
+		expect(partKinds['support-point-1']).toEqual(['shaft', 'junction', 'neck']);
+		expect(partKinds['support-point-2']).toEqual(['shaft', 'junction', 'neck']);
+		expect(partKinds['support-point-3']).toEqual(['foot', 'shaft', 'junction', 'neck']);
+	});
+
+	it('keeps a structure for every rafted point', () => {
+		const points = [
+			downwardContact('support-point-1', 14, 15),
+			downwardContact('support-point-2', 19, 15)
+		];
+		const raftedIds = new Set(points.map((point) => point.id));
+		expect(generateSupportPlan(points, raftedIds).structures).toHaveLength(2);
 	});
 });

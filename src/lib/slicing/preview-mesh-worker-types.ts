@@ -1,3 +1,4 @@
+import type { RaftIsland } from '$lib/supports/raft-plan';
 import type { Bounds3 } from '$lib/workspace/stl-importer';
 import type { ModelRotation, ModelTranslation } from '$lib/workspace/build-volume-renderer/types';
 import type { SupportPlan } from '$lib/workspace/supports';
@@ -11,6 +12,7 @@ export type PreviewMeshRequest = {
 	translation: ModelTranslation;
 	rotation: ModelRotation;
 	supportPlan: SupportPlan;
+	raftIslands: readonly RaftIsland[];
 };
 
 export type PreviewMeshProgressMessage = {

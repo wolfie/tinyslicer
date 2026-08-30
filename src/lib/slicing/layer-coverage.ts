@@ -1,3 +1,4 @@
+import { raftCrossSectionAtZ, type RaftIsland } from '$lib/supports/raft-plan';
 import {
 	IDENTITY_MODEL_ROTATION,
 	ZERO_MODEL_TRANSLATION
@@ -51,12 +52,14 @@ export class LayerCoverageRasterizer {
 
 	readonly #inner: ModelLayerMaskRasterizer;
 	readonly #plan: SupportPlan;
+	readonly #raftIslands: readonly RaftIsland[];
 
 	constructor(
 		model: Pick<ImportedStlModel, 'positions' | 'bounds'>,
 		translation: ModelTranslation = ZERO_MODEL_TRANSLATION,
 		rotation: ModelRotation = IDENTITY_MODEL_ROTATION,
 		supportPlan: SupportPlan = EMPTY_SUPPORT_PLAN,
+		raftIslands: readonly RaftIsland[] = [],
 		profile: LayerMaskRasterizationProfile = TINYMAKER_LAYER_MASK_PROFILE,
 		supersample: number = PREVIEW_SUPERSAMPLE
 	) {
@@ -67,6 +70,7 @@ export class LayerCoverageRasterizer {
 		this.width = profile.resolution.x;
 		this.height = profile.resolution.y;
 		this.#plan = supportPlan;
+		this.#raftIslands = raftIslands;
 		this.#inner = new ModelLayerMaskRasterizer(model, translation, rotation, {
 			resolution: {
 				x: profile.resolution.x * supersample,
@@ -98,7 +102,9 @@ export class LayerCoverageRasterizer {
 		const superHeight = this.#inner.height;
 		const superData = this.#inner.createLayerMask(layerIndex).data;
 
-		this.#stampSupportCircles(superData, superWidth, superHeight, this.layerZMm(layerIndex));
+		const zMm = this.layerZMm(layerIndex);
+		this.#stampSupportCircles(superData, superWidth, superHeight, zMm);
+		this.#stampRaftPolygons(superData, superWidth, superHeight, zMm);
 
 		const out = new Float32Array(this.width * this.height);
 		const inverseCells = 1 / (s * s);
@@ -151,4 +157,62 @@ export class LayerCoverageRasterizer {
 			}
 		}
 	}
+
+	/**
+	 * Fills each raft island's cross-section at `zMm` into the supersampled mask,
+	 * so the preview and the export slice the raft exactly as they slice the model
+	 * and the posts. The cross-section is a ring set (outer boundary, then the
+	 * rim's hole once the core is gone), filled with even-odd parity.
+	 */
+	#stampRaftPolygons(superData: Uint8Array, superWidth: number, superHeight: number, zMm: number) {
+		if (this.#raftIslands.length === 0) return;
+		const subPitchX = this.pixelPitchMm.x / this.supersample;
+		const subPitchY = this.pixelPitchMm.y / this.supersample;
+
+		for (const island of this.#raftIslands) {
+			const rings = raftCrossSectionAtZ(island, zMm);
+			const outer = rings[0];
+			if (!outer || outer.length < 3) continue;
+
+			let minX = Infinity;
+			let minY = Infinity;
+			let maxX = -Infinity;
+			let maxY = -Infinity;
+			for (const point of outer) {
+				if (point.x < minX) minX = point.x;
+				if (point.x > maxX) maxX = point.x;
+				if (point.y < minY) minY = point.y;
+				if (point.y > maxY) maxY = point.y;
+			}
+
+			const minColumn = Math.max(0, Math.floor(minX / subPitchX - 0.5));
+			const maxColumn = Math.min(superWidth - 1, Math.ceil(maxX / subPitchX - 0.5));
+			const minRow = Math.max(0, Math.floor(minY / subPitchY - 0.5));
+			const maxRow = Math.min(superHeight - 1, Math.ceil(maxY / subPitchY - 0.5));
+
+			for (let row = minRow; row <= maxRow; row += 1) {
+				const sampleY = (row + 0.5) * subPitchY;
+				const rowOffset = row * superWidth;
+				for (let column = minColumn; column <= maxColumn; column += 1) {
+					const sampleX = (column + 0.5) * subPitchX;
+					if (pointInRings(sampleX, sampleY, rings)) superData[rowOffset + column] = 1;
+				}
+			}
+		}
+	}
+}
+
+/** Even-odd parity across every ring, at a pixel centre — same sampling as the circle stamp. */
+function pointInRings(x: number, y: number, rings: readonly { x: number; y: number }[][]): boolean {
+	let inside = false;
+	for (const ring of rings) {
+		for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+			const a = ring[i];
+			const b = ring[j];
+			if (a.y > y !== b.y > y && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) {
+				inside = !inside;
+			}
+		}
+	}
+	return inside;
 }
