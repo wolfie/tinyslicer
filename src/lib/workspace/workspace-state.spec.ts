@@ -97,63 +97,76 @@ describe('workspace workflow', () => {
 	it('only enables supports for a loaded model inside the build volume', () => {
 		const workspace = new WorkspaceState();
 
-		expect(workspace.canEnterSupports).toBe(false);
-		expect(workspace.requestStep('supports')).toBe(false);
+		expect(workspace.scene.isPlaceable).toBe(false);
+		expect(workspace.workflow.requestStep('supports')).toBe(false);
 
 		workspace.setModel(modelWithinBuildVolume());
-		expect(workspace.canEnterSupports).toBe(true);
+		expect(workspace.scene.isPlaceable).toBe(true);
 
-		workspace.setModelTranslation({ x: TINYMAKER_PROFILE.buildVolume.x, y: 0, z: 0 });
-		expect(workspace.canEnterSupports).toBe(false);
-		expect(workspace.requestStep('supports')).toBe(false);
+		workspace.scene.setTranslation({ x: TINYMAKER_PROFILE.buildVolume.x, y: 0, z: 0 });
+		expect(workspace.scene.isPlaceable).toBe(false);
+		expect(workspace.workflow.requestStep('supports')).toBe(false);
 	});
 
 	it('warns when an in-volume model projection overlaps the support margin', () => {
 		const workspace = new WorkspaceState();
 		workspace.setModel(modelWithinBuildVolume());
 
-		expect(workspace.modelOverlapsSupportMargin).toBe(false);
+		expect(workspace.scene.overlapsSupportMargin).toBe(false);
 
-		workspace.setModelTranslation({ x: -7, y: 0, z: 0 });
+		workspace.scene.setTranslation({ x: -7, y: 0, z: 0 });
 
-		expect(workspace.modelOutsideBuildVolume).toBe(false);
-		expect(workspace.modelOverlapsSupportMargin).toBe(true);
-		expect(workspace.canEnterSupports).toBe(true);
+		expect(workspace.scene.outsideBuildVolume).toBe(false);
+		expect(workspace.scene.overlapsSupportMargin).toBe(true);
+		expect(workspace.scene.isPlaceable).toBe(true);
 
-		workspace.setModelTranslation({ x: -11, y: 0, z: 0 });
+		workspace.scene.setTranslation({ x: -11, y: 0, z: 0 });
 
-		expect(workspace.modelOutsideBuildVolume).toBe(true);
-		expect(workspace.modelOverlapsSupportMargin).toBe(false);
+		expect(workspace.scene.outsideBuildVolume).toBe(true);
+		expect(workspace.scene.overlapsSupportMargin).toBe(false);
 	});
 
 	it('locks model transforms while placing supports', () => {
 		const workspace = new WorkspaceState();
 		workspace.setModel(modelWithinBuildVolume());
-		expect(workspace.requestStep('supports')).toBe(true);
+		expect(workspace.workflow.requestStep('supports')).toBe(true);
 
-		workspace.setModelTranslation({ x: 5, y: 6, z: 7 });
-		workspace.setModelRotation({ x: 1, y: 0, z: 0, w: 0 });
+		workspace.scene.setTranslation({ x: 5, y: 6, z: 7 });
+		workspace.scene.setRotation({ x: 1, y: 0, z: 0, w: 0 });
 
-		expect(workspace.modelTranslation).toEqual({ x: 0, y: 0, z: 0 });
-		expect(workspace.modelRotation).toEqual({ x: 0, y: 0, z: 0, w: 1 });
-		expect(workspace.interactionMode).toBe('place-supports');
+		expect(workspace.scene.translation).toEqual({ x: 0, y: 0, z: 0 });
+		expect(workspace.scene.rotation).toEqual({ x: 0, y: 0, z: 0, w: 1 });
+		expect(workspace.workflow.interactionMode).toBe('place-supports');
+	});
+
+	it('unlocks model transforms again when the workflow returns to prepare', () => {
+		const workspace = new WorkspaceState();
+		workspace.setModel(modelWithinBuildVolume());
+		workspace.workflow.requestStep('supports');
+		expect(workspace.scene.transformsLocked).toBe(true);
+
+		expect(workspace.workflow.requestStep('prepare')).toBe(true);
+		expect(workspace.scene.transformsLocked).toBe(false);
+
+		workspace.scene.setTranslation({ x: 1, y: 2, z: 3 });
+		expect(workspace.scene.translation).toEqual({ x: 1, y: 2, z: 3 });
 	});
 
 	it('stores independently identified world-space support points', () => {
 		const workspace = new WorkspaceState();
 		workspace.setModel(modelWithinBuildVolume());
-		workspace.requestStep('supports');
+		workspace.workflow.requestStep('supports');
 		const hit = {
 			position: { x: 12, y: 14, z: 5 },
 			normal: { x: 0, y: 0, z: 1 },
 			lowerContactPosition: { x: 12, y: 14, z: 2 }
 		};
 
-		expect(workspace.addSupportPoint(hit)).toBe(true);
+		expect(workspace.workflow.placeSupport(hit)).toBe(true);
 		hit.position.x = 99;
 		hit.lowerContactPosition.x = 99;
 
-		expect(workspace.supportPoints).toEqual([
+		expect(workspace.supports.points).toEqual([
 			{
 				id: 'support-point-1',
 				position: { x: 12, y: 14, z: 5 },
@@ -163,53 +176,66 @@ describe('workspace workflow', () => {
 		]);
 	});
 
+	it('rejects support placement outside the Supports step', () => {
+		const workspace = new WorkspaceState();
+		workspace.setModel(modelWithinBuildVolume());
+
+		expect(
+			workspace.workflow.placeSupport({
+				position: { x: 12, y: 14, z: 5 },
+				normal: { x: 0, y: 0, z: 1 }
+			})
+		).toBe(false);
+		expect(workspace.supports.points).toEqual([]);
+	});
+
 	it('generates an editable initial support set when entering Supports', async () => {
 		const workspace = new WorkspaceState({ createAutoSupportWorker: stubAutoSupportWorker });
 		workspace.setModel(floatingBoxModel());
 
-		expect(workspace.requestStep('supports')).toBe(true);
-		expect(workspace.autoSupportBuild.status).toBe('building');
-		await vi.waitFor(() => expect(workspace.autoSupportBuild.status).toBe('ready'), {
+		expect(workspace.workflow.requestStep('supports')).toBe(true);
+		expect(workspace.supports.autoBuild.status).toBe('building');
+		await vi.waitFor(() => expect(workspace.supports.autoBuild.status).toBe('ready'), {
 			timeout: 5000
 		});
-		expect(workspace.supportPoints.length).toBeGreaterThan(0);
-		expect(workspace.autoGeneratedSupportCount).toBe(workspace.supportPoints.length);
-		expect(workspace.supportPlan.structures).toHaveLength(workspace.supportPoints.length);
-		expect(workspace.autoSupportDiagnostics).toMatchObject({
+		expect(workspace.supports.points.length).toBeGreaterThan(0);
+		expect(workspace.supports.autoGeneratedCount).toBe(workspace.supports.points.length);
+		expect(workspace.supports.plan.structures).toHaveLength(workspace.supports.points.length);
+		expect(workspace.supports.autoDiagnostics).toMatchObject({
 			meshIsWatertightAtPixelSamples: true,
 			truncated: false
 		});
-		expect(workspace.supportPoints.every((point) => point.normal.z === -1)).toBe(true);
+		expect(workspace.supports.points.every((point) => point.normal.z === -1)).toBe(true);
 
-		const generatedIds = workspace.supportPoints.map((point) => point.id);
-		expect(workspace.requestStep('supports')).toBe(true);
-		expect(workspace.supportPoints.map((point) => point.id)).toEqual(generatedIds);
+		const generatedIds = workspace.supports.points.map((point) => point.id);
+		expect(workspace.workflow.requestStep('supports')).toBe(true);
+		expect(workspace.supports.points.map((point) => point.id)).toEqual(generatedIds);
 
 		expect(
-			workspace.addSupportPoint({
+			workspace.workflow.placeSupport({
 				position: { x: 12, y: 14, z: 5 },
 				normal: { x: 0, y: 0, z: -1 }
 			})
 		).toBe(true);
-		expect(new Set(workspace.supportPoints.map((point) => point.id)).size).toBe(
-			workspace.supportPoints.length
+		expect(new Set(workspace.supports.points.map((point) => point.id)).size).toBe(
+			workspace.supports.points.length
 		);
 	});
 
 	it('keeps unresolved support points separate from generated structures', () => {
 		const workspace = new WorkspaceState();
 		workspace.setModel(modelWithinBuildVolume());
-		workspace.requestStep('supports');
+		workspace.workflow.requestStep('supports');
 
 		expect(
-			workspace.addSupportPoint({
+			workspace.workflow.placeSupport({
 				position: { x: 12, y: 14, z: 0.5 },
 				normal: { x: 0, y: 0, z: -1 }
 			})
 		).toBe(true);
-		expect(workspace.supportPoints).toHaveLength(1);
-		expect(workspace.supportPlan.structures).toEqual([]);
-		expect(workspace.supportPlan.unresolvedPoints).toEqual([
+		expect(workspace.supports.points).toHaveLength(1);
+		expect(workspace.supports.plan.structures).toEqual([]);
+		expect(workspace.supports.plan.unresolvedPoints).toEqual([
 			{ pointId: 'support-point-1', reason: 'insufficient-height' }
 		]);
 	});
@@ -217,103 +243,106 @@ describe('workspace workflow', () => {
 	it('requires confirmation before returning to prepare when supports exist', () => {
 		const workspace = new WorkspaceState();
 		workspace.setModel(modelWithinBuildVolume());
-		workspace.requestStep('supports');
-		workspace.addSupportPoint({
+		workspace.workflow.requestStep('supports');
+		workspace.workflow.placeSupport({
 			position: { x: 12, y: 14, z: 5 },
 			normal: { x: 0, y: 0, z: 1 }
 		});
 
-		expect(workspace.requestStep('prepare')).toBe(false);
-		expect(workspace.step).toBe('supports');
-		expect(workspace.discardSupportsDialogOpen).toBe(true);
+		expect(workspace.workflow.requestStep('prepare')).toBe(false);
+		expect(workspace.workflow.step).toBe('supports');
+		expect(workspace.workflow.discardDialogOpen).toBe(true);
 
-		workspace.cancelDiscardSupports();
-		expect(workspace.step).toBe('supports');
-		expect(workspace.supportPoints).toHaveLength(1);
+		workspace.workflow.cancelDiscard();
+		expect(workspace.workflow.step).toBe('supports');
+		expect(workspace.supports.points).toHaveLength(1);
 
-		workspace.requestStep('prepare');
-		workspace.confirmDiscardSupports();
-		expect(workspace.step).toBe('prepare');
-		expect(workspace.supportPoints).toEqual([]);
+		workspace.workflow.requestStep('prepare');
+		workspace.workflow.confirmDiscard();
+		expect(workspace.workflow.step).toBe('prepare');
+		expect(workspace.supports.points).toEqual([]);
 	});
 
 	it('gates the Preview step on the same rule as Supports', () => {
 		const workspace = new WorkspaceState();
-		expect(workspace.canNavigateTo('preview')).toBe(false);
+		expect(workspace.workflow.canNavigateTo('preview')).toBe(false);
 
 		workspace.setModel(modelWithinBuildVolume());
-		expect(workspace.canNavigateTo('preview')).toBe(true);
+		expect(workspace.workflow.canNavigateTo('preview')).toBe(true);
 
-		workspace.setModelTranslation({ x: TINYMAKER_PROFILE.buildVolume.x, y: 0, z: 0 });
-		expect(workspace.canNavigateTo('preview')).toBe(false);
-		expect(workspace.requestStep('preview')).toBe(false);
+		workspace.scene.setTranslation({ x: TINYMAKER_PROFILE.buildVolume.x, y: 0, z: 0 });
+		expect(workspace.workflow.canNavigateTo('preview')).toBe(false);
+		expect(workspace.workflow.requestStep('preview')).toBe(false);
 	});
 
 	it('generates the initial supports once when Preview is entered straight from Prepare', async () => {
 		const workspace = new WorkspaceState({ createAutoSupportWorker: stubAutoSupportWorker });
 		workspace.setModel(floatingBoxModel());
 
-		expect(workspace.requestStep('preview')).toBe(true);
-		expect(workspace.step).toBe('preview');
-		await vi.waitFor(() => expect(workspace.autoSupportBuild.status).toBe('ready'), {
+		expect(workspace.workflow.requestStep('preview')).toBe(true);
+		expect(workspace.workflow.step).toBe('preview');
+		await vi.waitFor(() => expect(workspace.supports.autoBuild.status).toBe('ready'), {
 			timeout: 5000
 		});
-		expect(workspace.supportPoints.length).toBeGreaterThan(0);
+		expect(workspace.supports.points.length).toBeGreaterThan(0);
 
-		const ids = workspace.supportPoints.map((point) => point.id);
-		expect(workspace.requestStep('supports')).toBe(true);
-		expect(workspace.supportPoints.map((point) => point.id)).toEqual(ids);
+		const ids = workspace.supports.points.map((point) => point.id);
+		expect(workspace.workflow.requestStep('supports')).toBe(true);
+		expect(workspace.supports.points.map((point) => point.id)).toEqual(ids);
 	});
 
 	it('moves freely between Preview and Supports but guards the return to Prepare', () => {
 		const workspace = new WorkspaceState();
 		workspace.setModel(modelWithinBuildVolume());
-		workspace.requestStep('supports');
-		workspace.addSupportPoint({ position: { x: 12, y: 14, z: 5 }, normal: { x: 0, y: 0, z: 1 } });
+		workspace.workflow.requestStep('supports');
+		workspace.workflow.placeSupport({
+			position: { x: 12, y: 14, z: 5 },
+			normal: { x: 0, y: 0, z: 1 }
+		});
 
-		expect(workspace.requestStep('preview')).toBe(true);
-		expect(workspace.requestStep('supports')).toBe(true);
-		expect(workspace.requestStep('preview')).toBe(true);
+		expect(workspace.workflow.requestStep('preview')).toBe(true);
+		expect(workspace.workflow.requestStep('supports')).toBe(true);
+		expect(workspace.workflow.requestStep('preview')).toBe(true);
 
-		expect(workspace.requestStep('prepare')).toBe(false);
-		expect(workspace.step).toBe('preview');
-		expect(workspace.discardSupportsDialogOpen).toBe(true);
+		expect(workspace.workflow.requestStep('prepare')).toBe(false);
+		expect(workspace.workflow.step).toBe('preview');
+		expect(workspace.workflow.discardDialogOpen).toBe(true);
 	});
 
 	it('clears any sliced preview when a new model is loaded', () => {
 		const workspace = new WorkspaceState();
 		workspace.setModel(modelWithinBuildVolume());
-		workspace.requestStep('preview');
+		workspace.workflow.requestStep('preview');
 
 		workspace.setModel({ ...modelWithinBuildVolume(), name: 'replacement.stl' });
 
-		expect(workspace.previewBuild.status).toBe('idle');
-		expect(workspace.previewBuild.mesh).toBeNull();
+		expect(workspace.preview.status).toBe('idle');
+		expect(workspace.preview.mesh).toBeNull();
 	});
 
 	it('returns directly to prepare when no supports were placed', () => {
 		const workspace = new WorkspaceState();
 		workspace.setModel(modelWithinBuildVolume());
-		workspace.requestStep('supports');
+		workspace.workflow.requestStep('supports');
 
-		expect(workspace.requestStep('prepare')).toBe(true);
-		expect(workspace.step).toBe('prepare');
-		expect(workspace.discardSupportsDialogOpen).toBe(false);
+		expect(workspace.workflow.requestStep('prepare')).toBe(true);
+		expect(workspace.workflow.step).toBe('prepare');
+		expect(workspace.workflow.discardDialogOpen).toBe(false);
 	});
 
 	it('clears support and workflow state when a new model is loaded', () => {
 		const workspace = new WorkspaceState();
 		workspace.setModel(modelWithinBuildVolume());
-		workspace.requestStep('supports');
-		workspace.addSupportPoint({
+		workspace.workflow.requestStep('supports');
+		workspace.workflow.placeSupport({
 			position: { x: 12, y: 14, z: 5 },
 			normal: { x: 0, y: 0, z: 1 }
 		});
 
 		workspace.setModel({ ...modelWithinBuildVolume(), name: 'replacement.stl' });
 
-		expect(workspace.step).toBe('prepare');
-		expect(workspace.supportPoints).toEqual([]);
-		expect(workspace.model?.name).toBe('replacement.stl');
+		expect(workspace.workflow.step).toBe('prepare');
+		expect(workspace.supports.points).toEqual([]);
+		expect(workspace.scene.model?.name).toBe('replacement.stl');
 	});
 });
