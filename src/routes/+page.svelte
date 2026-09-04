@@ -4,6 +4,7 @@
 	import DiscardSupportsDialog from '$lib/workspace/DiscardSupportsDialog.svelte';
 	import WorkflowHeader from '$lib/workspace/WorkflowHeader.svelte';
 	import WorkspaceViewport from '$lib/workspace/WorkspaceViewport.svelte';
+	import WorkspaceExport from '$lib/workspace/WorkspaceExport.svelte';
 	import { importStlFile } from '$lib/workspace/stl-importer';
 	import { provideWorkspace } from '$lib/workspace/workspace-context';
 	import { WorkspaceState, type WorkflowStep } from '$lib/workspace/workspace-state.svelte';
@@ -119,6 +120,7 @@
 	<WorkflowHeader
 		currentStep={workspace.workflow.step}
 		canEnterSupports={workspace.scene.isPlaceable}
+		canEnterExport={workspace.workflow.canNavigateTo('export')}
 		importing={importState === 'loading'}
 		onStepRequest={requestStep}
 		onFileSelection={handleStlSelection}
@@ -127,36 +129,41 @@
 	<main
 		class="grid h-[calc(100vh_-_68px)] min-h-[560px] grid-cols-[minmax(0,1fr)_288px] max-tablet:grid-cols-[1fr]"
 	>
-		<WorkspaceViewport
-			model={workspace.scene.model}
-			modelTranslation={workspace.scene.translation}
-			modelRotation={workspace.scene.rotation}
-			transformedModelBounds={workspace.scene.transformedBounds}
-			modelOutsideBuildVolume={workspace.scene.outsideBuildVolume}
-			modelOverlapsSupportMargin={workspace.scene.overlapsSupportMargin}
-			canEnterSupports={workspace.scene.isPlaceable}
-			interactionMode={workspace.workflow.interactionMode}
-			supportPointCount={workspace.supports.points.length}
-			supportPoints={workspace.supports.points}
-			supportStructures={workspace.supports.plan.structures}
-			raftIslands={workspace.supports.raftPlan.islands}
-			autoSupportStatus={workspace.supports.autoBuild.status}
-			autoSupportProgress={workspace.supports.autoBuild.progress}
-			previewStatus={workspace.preview.status}
-			previewProgress={workspace.preview.progress}
-			previewMesh={workspace.preview.mesh}
-			previewLayerCount={workspace.preview.layerCount}
-			previewZHeightMm={workspace.preview.zHeightMm}
-			previewWatertight={workspace.preview.watertight}
-			previewError={workspace.preview.error}
-			onTranslationChange={workspace.scene.setTranslation}
-			onRotationChange={workspace.scene.setRotation}
-			onSupportPointPlaced={(hit) => workspace.workflow.placeSupport(hit)}
-			onEnterSupports={() => requestStep('supports')}
-			onEnterPreview={() => requestStep('preview')}
-			onBackToPrepare={() => requestStep('prepare')}
-			onBackToSupports={() => requestStep('supports')}
-		/>
+		{#if workspace.workflow.step === 'export'}
+			<WorkspaceExport onBack={() => requestStep('preview')} />
+		{:else}
+			<WorkspaceViewport
+				model={workspace.scene.model}
+				modelTranslation={workspace.scene.translation}
+				modelRotation={workspace.scene.rotation}
+				transformedModelBounds={workspace.scene.transformedBounds}
+				modelOutsideBuildVolume={workspace.scene.outsideBuildVolume}
+				modelOverlapsSupportMargin={workspace.scene.overlapsSupportMargin}
+				canEnterSupports={workspace.scene.isPlaceable}
+				interactionMode={workspace.workflow.interactionMode}
+				supportPointCount={workspace.supports.points.length}
+				supportPoints={workspace.supports.points}
+				supportStructures={workspace.supports.plan.structures}
+				raftIslands={workspace.supports.raftPlan.islands}
+				autoSupportStatus={workspace.supports.autoBuild.status}
+				autoSupportProgress={workspace.supports.autoBuild.progress}
+				previewStatus={workspace.preview.status}
+				previewProgress={workspace.preview.progress}
+				previewMesh={workspace.preview.mesh}
+				previewLayerCount={workspace.preview.layerCount}
+				previewZHeightMm={workspace.preview.zHeightMm}
+				previewWatertight={workspace.preview.watertight}
+				previewError={workspace.preview.error}
+				onTranslationChange={workspace.scene.setTranslation}
+				onRotationChange={workspace.scene.setRotation}
+				onSupportPointPlaced={(hit) => workspace.workflow.placeSupport(hit)}
+				onEnterSupports={() => requestStep('supports')}
+				onEnterPreview={() => requestStep('preview')}
+				onBackToPrepare={() => requestStep('prepare')}
+				onBackToSupports={() => requestStep('supports')}
+				onEnterExport={() => requestStep('export')}
+			/>
+		{/if}
 
 		<WorkspaceAside {importError} />
 	</main>

@@ -4,6 +4,7 @@
 	type Props = {
 		currentStep: WorkflowStep;
 		canEnterSupports: boolean;
+		canEnterExport: boolean;
 		importing: boolean;
 		onStepRequest: (step: WorkflowStep) => void;
 		onFileSelection: (event: Event) => void;
@@ -16,14 +17,20 @@
 		{ id: 'export', label: 'Export' }
 	];
 
-	let { currentStep, canEnterSupports, importing, onStepRequest, onFileSelection }: Props =
-		$props();
+	let {
+		currentStep,
+		canEnterSupports,
+		canEnterExport,
+		importing,
+		onStepRequest,
+		onFileSelection
+	}: Props = $props();
 	let currentStepIndex = $derived(WORKFLOW_STEPS.findIndex((step) => step.id === currentStep));
 
 	function stepEnabled(step: WorkflowStep): boolean {
 		if (step === 'prepare') return true;
 		if (step === 'supports' || step === 'preview') return canEnterSupports;
-		return false;
+		return canEnterExport;
 	}
 
 	function stepState(id: WorkflowStep, index: number): 'active' | 'completed' | 'idle' {

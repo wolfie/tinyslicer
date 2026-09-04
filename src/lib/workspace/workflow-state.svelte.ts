@@ -1,4 +1,5 @@
 import type { BuildVolumeInteractionMode } from './build-volume-renderer/types';
+import type { ProjectExport } from './export-state.svelte';
 import type { PreviewBuild } from './preview-state.svelte';
 import type { SceneState } from './scene-state.svelte';
 import type { ModelSurfaceHit } from './supports';
@@ -26,11 +27,18 @@ export class WorkflowState {
 	#scene: SceneState;
 	#supports: SupportsState;
 	#preview: PreviewBuild;
+	#export: ProjectExport;
 
-	constructor(scene: SceneState, supports: SupportsState, preview: PreviewBuild) {
+	constructor(
+		scene: SceneState,
+		supports: SupportsState,
+		preview: PreviewBuild,
+		exportState: ProjectExport
+	) {
 		this.#scene = scene;
 		this.#supports = supports;
 		this.#preview = preview;
+		this.#export = exportState;
 	}
 
 	/** Whether the model is placed well enough to enter Supports/Preview. */
@@ -41,16 +49,27 @@ export class WorkflowState {
 	canNavigateTo(step: WorkflowStep): boolean {
 		if (step === 'prepare') return true;
 		if (step === 'supports' || step === 'preview') return this.#scene.isPlaceable;
-		return false;
+		return (
+			this.#scene.isPlaceable &&
+			this.#supports.autoBuild.status !== 'building' &&
+			this.#preview.status === 'ready' &&
+			this.#preview.mesh !== null
+		);
 	}
 
 	requestStep(step: WorkflowStep): boolean {
 		if (step === this.step) return true;
+		if (
+			this.step === 'export' &&
+			(this.#export.status === 'picking' || this.#export.status === 'slicing')
+		) {
+			return false;
+		}
 		if (!this.canNavigateTo(step)) return false;
 
 		if (
 			step === 'prepare' &&
-			(this.step === 'supports' || this.step === 'preview') &&
+			(this.step === 'supports' || this.step === 'preview' || this.step === 'export') &&
 			this.#supports.points.length > 0
 		) {
 			this.discardDialogOpen = true;
@@ -92,6 +111,7 @@ export class WorkflowState {
 	}
 
 	reset() {
+		this.#export.reset();
 		this.discardDialogOpen = false;
 		this.#setStep('prepare');
 	}

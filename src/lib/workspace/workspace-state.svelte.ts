@@ -1,3 +1,4 @@
+import { ProjectExport, type ProjectExportOptions } from './export-state.svelte';
 import { PreviewBuild } from './preview-state.svelte';
 import { SceneState } from './scene-state.svelte';
 import type { ImportedStlModel } from './stl-importer';
@@ -9,6 +10,7 @@ export type { WorkflowStep } from './workflow-state.svelte';
 export type WorkspaceStateOptions = {
 	/** Overrides the automatic-support worker factory (tests inject a synchronous stub). */
 	createAutoSupportWorker?: () => Promise<Worker>;
+	export?: ProjectExportOptions;
 };
 
 /**
@@ -21,13 +23,15 @@ export class WorkspaceState {
 	readonly scene = new SceneState();
 	readonly supports: SupportsState;
 	readonly preview = new PreviewBuild();
+	readonly export: ProjectExport;
 	readonly workflow: WorkflowState;
 
 	constructor(options: WorkspaceStateOptions = {}) {
+		this.export = new ProjectExport(options.export);
 		this.supports = new SupportsState(options.createAutoSupportWorker, () =>
 			this.workflow.onSupportSetChanged()
 		);
-		this.workflow = new WorkflowState(this.scene, this.supports, this.preview);
+		this.workflow = new WorkflowState(this.scene, this.supports, this.preview, this.export);
 	}
 
 	setModel(model: ImportedStlModel) {
@@ -40,5 +44,6 @@ export class WorkspaceState {
 	dispose() {
 		this.supports.autoBuild.dispose();
 		this.preview.dispose();
+		this.export.dispose();
 	}
 }

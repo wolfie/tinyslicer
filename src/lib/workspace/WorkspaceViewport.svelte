@@ -52,6 +52,7 @@
 		onEnterPreview: () => void;
 		onBackToPrepare: () => void;
 		onBackToSupports: () => void;
+		onEnterExport: () => void;
 	};
 
 	let {
@@ -82,7 +83,8 @@
 		onEnterSupports,
 		onEnterPreview,
 		onBackToPrepare,
-		onBackToSupports
+		onBackToSupports,
+		onEnterExport
 	}: Props = $props();
 
 	const camera = new OrbitCamera();
@@ -420,18 +422,31 @@
 					<span>{previewError ?? 'The sliced preview could not be generated.'}</span>
 				</div>
 			{:else if previewStatus === 'ready'}
-				<div
-					class="{PREVIEW_STATUS_BASE} border-[rgba(120,200,255,0.32)] bg-[rgba(12,20,30,0.86)] text-[#a7d4f2]"
-					role="status"
-				>
-					<span
-						>{previewLayerCount} layers · Z 0–{previewZHeightMm.toFixed(2)} mm · voxel-accurate</span
+				<div class={CORNER_ACTION_STACK}>
+					<div
+						class="flex flex-col gap-[5px] rounded-lg border border-[rgba(120,200,255,0.32)] bg-[rgba(12,20,30,0.86)] px-[11px] py-[9px] text-[10px] font-semibold text-[#a7d4f2] backdrop-blur-[8px]"
+						role="status"
 					>
-					{#if !previewWatertight}
-						<span class="leading-[1.35] font-medium text-amber-soft"
-							>Mesh was not watertight at sampled pixels — the preview may differ from the print.</span
+						<span
+							>{previewLayerCount} layers · Z 0–{previewZHeightMm.toFixed(2)} mm · voxel-accurate</span
 						>
-					{/if}
+						{#if !previewWatertight}
+							<span class="leading-[1.35] font-medium text-amber-soft"
+								>Mesh was not watertight at sampled pixels — the preview may differ from the print.</span
+							>
+						{/if}
+					</div>
+					<button type="button" class={GREEN_ACTION_BUTTON} onclick={onEnterExport}>
+						<svg class={ACTION_ICON} viewBox="0 0 24 24" aria-hidden="true">
+							<path d="M4 5h16v14H4zM8 9h8m-4-4v14" />
+						</svg>
+						<div class={ACTION_DESC}>
+							<strong class={ACTION_TITLE}>Export print project</strong>
+							<span class="text-[9px] leading-[1.35] text-[#8ecba7]"
+								>Write the layer stack to a new folder.</span
+							>
+						</div>
+					</button>
 				</div>
 			{/if}
 		{/if}

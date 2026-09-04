@@ -20,7 +20,8 @@ const previewProps = {
 	previewWatertight: true,
 	previewError: null,
 	onEnterPreview: noop,
-	onBackToSupports: noop
+	onBackToSupports: noop,
+	onEnterExport: noop
 };
 
 function modelWithinBuildVolume(): ImportedStlModel {
@@ -42,6 +43,7 @@ describe('workflow UI', () => {
 			props: {
 				currentStep: 'prepare',
 				canEnterSupports: false,
+				canEnterExport: false,
 				importing: false,
 				onStepRequest: noop,
 				onFileSelection: noop
@@ -177,6 +179,7 @@ describe('workflow UI', () => {
 			props: {
 				currentStep: 'prepare',
 				canEnterSupports: false,
+				canEnterExport: false,
 				importing: false,
 				onStepRequest: noop,
 				onFileSelection: noop
@@ -188,6 +191,7 @@ describe('workflow UI', () => {
 			props: {
 				currentStep: 'supports',
 				canEnterSupports: true,
+				canEnterExport: false,
 				importing: false,
 				onStepRequest: noop,
 				onFileSelection: noop

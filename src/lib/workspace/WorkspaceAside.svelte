@@ -1,5 +1,11 @@
 <script lang="ts">
-	import { usePreview, useScene, useSupports, useWorkflow } from '$lib/workspace/workspace-context';
+	import {
+		useExport,
+		usePreview,
+		useScene,
+		useSupports,
+		useWorkflow
+	} from '$lib/workspace/workspace-context';
 	import WorkspaceAsideFooter from './WorkspaceAsideFooter.svelte';
 	import WorkspaceAsidePrinterProfile from './WorkspaceAsidePrinterProfile.svelte';
 
@@ -12,6 +18,7 @@
 	const supports = useSupports();
 	const preview = usePreview();
 	const workflow = useWorkflow();
+	const projectExport = useExport();
 
 	function formatMillimetres(value: number): string {
 		return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
@@ -147,6 +154,31 @@
 							>{preview.layerCount === 1 ? 'layer' : 'layers'} · Z 0–{formatMillimetres(
 								preview.zHeightMm
 							)} mm</small
+						>
+					</div>
+				{:else if workflow.step === 'export'}
+					<div class="rounded-lg border border-blue/25 bg-blue/10 p-3">
+						<div
+							class="flex items-center gap-[7px] text-[10px] font-bold tracking-[0.04em] text-[#9bccec] uppercase"
+						>
+							<span class="u-dot text-blue"></span>Print project
+						</div>
+						<p class="mt-[9px] mb-[13px] text-[10px] leading-[1.45] text-[#71899d]">
+							{projectExport.status === 'saved'
+								? projectExport.mode === 'archive'
+									? 'The complete printer-ready project was packaged as a downloaded ZIP.'
+									: 'The complete printer-ready folder was written without replacing existing data.'
+								: projectExport.status === 'slicing'
+									? projectExport.mode === 'archive'
+										? 'Generating grayscale exposure masks and packing them into a ZIP.'
+										: 'Generating grayscale exposure masks and writing each one directly to disk.'
+									: 'Choose a project name, then save a new folder or download a ZIP.'}
+						</p>
+						<strong class="text-[22px] font-[650] text-[#b5dcf4] tabular-nums"
+							>{projectExport.completedLayers || preview.layerCount}</strong
+						>
+						<small class="ml-1.5 text-[9px] text-[#6f8ca1]"
+							>of {projectExport.totalLayers || preview.layerCount} layers</small
 						>
 					</div>
 				{/if}
