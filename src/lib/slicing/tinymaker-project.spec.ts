@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { createTinyMakerGcode, defaultProjectName, validateProjectName } from './tinymaker-project';
+import {
+	createTinyMakerGcode,
+	defaultProjectName,
+	TINYMAKER_PROJECT_NAME_MAX_LENGTH,
+	validateProjectName
+} from './tinymaker-project';
 
 describe('TinyMaker project metadata', () => {
 	it('matches the fixed profile and layer structure of the reference projects', () => {
@@ -23,10 +28,25 @@ describe('TinyMaker project metadata', () => {
 		expect(gcode).toMatch(/;END_GCODE_END\n$/);
 	});
 
-	it('creates portable default names and rejects path-like names', () => {
+	it('transliterates and sanitizes default project names for the TinyMaker firmware', () => {
 		expect(defaultProjectName('tiny:tooth?.STL')).toBe('tiny-tooth-');
+		expect(defaultProjectName('Hämmaste.stl')).toBe('Haemmaste');
+		expect(defaultProjectName('Я люблю зубы.stl')).toBe('Ya lyublyu zuby');
+		expect(defaultProjectName('emoji 🦷 tooth.stl')).toBe('emoji - tooth');
+		expect(defaultProjectName('中文模型.stl')).toBe('TinyMaker project');
+		expect(defaultProjectName(`${'a'.repeat(99)}.x.stl`)).toBe('a'.repeat(99));
+		expect(defaultProjectName(`${'a'.repeat(101)}.stl`)).toBe('a'.repeat(100));
+	});
+
+	it('validates manually edited names against the firmware and filesystem limits', () => {
 		expect(validateProjectName('Tiny tooth')).toBeNull();
+		expect(validateProjectName('a'.repeat(TINYMAKER_PROJECT_NAME_MAX_LENGTH))).toBeNull();
+		expect(validateProjectName('a'.repeat(TINYMAKER_PROJECT_NAME_MAX_LENGTH + 1))).toMatch(
+			/exceed 100 characters/
+		);
+		expect(validateProjectName('Hämmaste')).toMatch(/printable ASCII/);
 		expect(validateProjectName('../tooth')).toMatch(/path separators/);
+		expect(validateProjectName('.tooth')).toMatch(/dot or space/);
 		expect(validateProjectName('tooth.')).toMatch(/dot or space/);
 		expect(validateProjectName('CON')).toMatch(/reserved by the operating system/);
 	});

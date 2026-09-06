@@ -1,4 +1,10 @@
+import transliterate from '@sindresorhus/transliterate';
+
 import { TINYMAKER_PROFILE } from '$lib/printer/tinymaker';
+
+export const TINYMAKER_PROJECT_NAME_MAX_LENGTH = 100;
+const fallbackProjectName = 'TinyMaker project';
+const reservedFilenameCharacters = '<>:"/\\|?*';
 
 export type TinyMakerProjectMetadata = {
 	modelFileName: string;
@@ -11,9 +17,14 @@ function decimal(value: number, maximumFractionDigits = 5): string {
 }
 
 function hasReservedFilenameCharacter(value: string): boolean {
-	return [...value].some(
-		(character) => '<>:"/\\|?*'.includes(character) || (character.codePointAt(0) ?? 0) < 32
-	);
+	return [...value].some((character) => reservedFilenameCharacters.includes(character));
+}
+
+function hasNonPrintableAsciiCharacter(value: string): boolean {
+	return [...value].some((character) => {
+		const codePoint = character.codePointAt(0) ?? 0;
+		return codePoint < 0x20 || codePoint > 0x7e;
+	});
 }
 
 function isReservedWindowsName(value: string): boolean {
@@ -23,25 +34,37 @@ function isReservedWindowsName(value: string): boolean {
 
 export function defaultProjectName(modelFileName: string): string {
 	const withoutExtension = modelFileName.replace(/\.stl$/i, '');
-	const safe = [...withoutExtension]
-		.map((character) => (hasReservedFilenameCharacter(character) ? '-' : character))
+	const safe = [...transliterate(withoutExtension)]
+		.map((character) =>
+			hasNonPrintableAsciiCharacter(character) || hasReservedFilenameCharacter(character)
+				? '-'
+				: character
+		)
 		.join('')
-		.replace(/[. ]+$/g, '')
-		.trim();
-	return safe && safe !== '.' && safe !== '..' && !isReservedWindowsName(safe)
+		.replace(/^[. ]+|[. ]+$/g, '')
+		.slice(0, TINYMAKER_PROJECT_NAME_MAX_LENGTH)
+		.replace(/[. ]+$/g, '');
+	return safe && /[a-z0-9]/i.test(safe) && !isReservedWindowsName(safe)
 		? safe
-		: 'TinyMaker project';
+		: fallbackProjectName;
 }
 
 export function validateProjectName(name: string): string | null {
 	if (!name.trim()) return 'Enter a project name.';
-	if (name !== name.trim()) return 'Project names cannot begin or end with spaces.';
+	if (name.length > TINYMAKER_PROJECT_NAME_MAX_LENGTH) {
+		return `Project names cannot exceed ${TINYMAKER_PROJECT_NAME_MAX_LENGTH} characters.`;
+	}
+	if (hasNonPrintableAsciiCharacter(name)) {
+		return 'Project names can use only printable ASCII characters.';
+	}
 	if (name === '.' || name === '..') return 'Choose a different project name.';
-	if (isReservedWindowsName(name)) return 'That project name is reserved by the operating system.';
 	if (hasReservedFilenameCharacter(name)) {
 		return 'Project names cannot contain path separators or reserved filename characters.';
 	}
-	if (/[. ]$/.test(name)) return 'Project names cannot end with a dot or space.';
+	if (/^[. ]|[. ]$/.test(name)) {
+		return 'Project names cannot begin or end with a dot or space.';
+	}
+	if (isReservedWindowsName(name)) return 'That project name is reserved by the operating system.';
 	return null;
 }
 

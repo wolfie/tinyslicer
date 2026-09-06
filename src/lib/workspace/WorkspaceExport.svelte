@@ -1,5 +1,9 @@
 <script lang="ts">
-	import { defaultProjectName, validateProjectName } from '$lib/slicing/tinymaker-project';
+	import {
+		defaultProjectName,
+		TINYMAKER_PROJECT_NAME_MAX_LENGTH,
+		validateProjectName
+	} from '$lib/slicing/tinymaker-project';
 	import { useExport, usePreview, useScene, useSupports } from './workspace-context';
 
 	type Props = { onBack: () => void };
@@ -13,6 +17,9 @@
 	let nameError = $derived(validateProjectName(projectName));
 	let busy = $derived(projectExport.status === 'picking' || projectExport.status === 'slicing');
 	let progressPercent = $derived(Math.round(projectExport.progress * 100));
+
+	let uncroppedProjectName = $derived(projectName.substring(0, 10));
+	let croppedProjectName = $derived(projectName.substring(10));
 
 	async function exportProject(destination: 'directory' | 'archive') {
 		if (nameError || !scene.model || !preview.mesh) return;
@@ -75,20 +82,30 @@
 			</div>
 
 			<label for="project-name" class="u-eyebrow mb-2 block">Project name</label>
-			<input
-				id="project-name"
-				type="text"
-				bind:value={projectName}
-				disabled={busy}
-				aria-invalid={nameError ? 'true' : undefined}
-				aria-describedby="project-name-help"
-				class="h-10 w-full rounded-lg border border-line-strong bg-[#0b121a] px-3 text-xs text-ink-bright outline-none focus:border-blue focus:ring-2 focus:ring-blue/20 disabled:opacity-60"
-			/>
+			<div class="relative w-full">
+				<div class="pointer-events-none absolute top-3 left-3 text-xs text-ink-bright select-none">
+					<span>{uncroppedProjectName}</span><span class="opacity-50">{croppedProjectName}</span>
+				</div>
+				<input
+					id="project-name"
+					type="text"
+					maxlength={TINYMAKER_PROJECT_NAME_MAX_LENGTH}
+					bind:value={projectName}
+					disabled={busy}
+					aria-invalid={nameError ? 'true' : undefined}
+					aria-describedby="project-name-help project-name-printer-help"
+					class="h-10 w-full rounded-lg border border-line-strong bg-[#0b121a] px-3 text-xs text-transparent caret-ink-bright outline-none focus:border-blue focus:ring-2 focus:ring-blue/20 disabled:opacity-60"
+				/>
+			</div>
 			<p
 				id="project-name-help"
 				class={['mt-2 mb-0 min-h-4 text-[10px]', nameError ? 'text-red-soft' : 'text-ink-5']}
 			>
 				{nameError ?? `Creates “${projectName}” without replacing existing project data.`}
+			</p>
+			<p id="project-name-printer-help" class="mt-1 mb-0 text-[10px] text-ink-5">
+				The printer shows only the first 10 characters of the project name; the exported folder
+				keeps the full name.
 			</p>
 
 			<div class="mt-5 grid grid-cols-2 gap-2 text-[10px] max-mobile:grid-cols-1">
