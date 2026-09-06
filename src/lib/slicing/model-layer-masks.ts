@@ -31,6 +31,7 @@ export type VerticalModelInterval = {
 };
 
 type ProjectedVertex = { x: number; y: number; z: number };
+type OrientedCrossing = { z: number; windingDelta: -1 | 1 };
 
 const COORDINATE_EPSILON = 1e-9;
 const CROSSING_MERGE_EPSILON_MM = 1e-6;
@@ -83,28 +84,42 @@ function clamp(value: number, minimum: number, maximum: number): number {
 	return Math.max(minimum, Math.min(maximum, value));
 }
 
-function compactCrossings(crossings: readonly number[]): Float64Array {
-	if (crossings.length === 0) return new Float64Array();
+function unionIntervals(crossings: readonly OrientedCrossing[]): {
+	intervals: Float64Array;
+	balanced: boolean;
+} {
+	if (crossings.length === 0) return { intervals: new Float64Array(), balanced: true };
 
-	const sorted = [...crossings].sort((left, right) => left - right);
-	const compacted: number[] = [];
+	const sorted = [...crossings].sort((left, right) => left.z - right.z);
+	const intervals: number[] = [];
+	let winding = 0;
+	let intervalStart: number | undefined;
 	for (let start = 0; start < sorted.length;) {
 		let end = start + 1;
 		while (
 			end < sorted.length &&
-			Math.abs(sorted[end] - sorted[start]) <= CROSSING_MERGE_EPSILON_MM
+			Math.abs(sorted[end].z - sorted[start].z) <= CROSSING_MERGE_EPSILON_MM
 		) {
 			end += 1;
 		}
 
-		const representative = sorted[start];
-		compacted.push(representative);
-		// Keep an even cluster even: two touching closed solids must not turn
-		// their shared boundary into a spurious enter/exit transition.
-		if ((end - start) % 2 === 0) compacted.push(representative);
+		const z = sorted[start].z;
+		const wasInside = winding !== 0;
+		for (let crossingIndex = start; crossingIndex < end; crossingIndex += 1) {
+			winding += sorted[crossingIndex].windingDelta;
+		}
+		const isInside = winding !== 0;
+		if (!wasInside && isInside) intervalStart = z;
+		else if (wasInside && !isInside && intervalStart !== undefined) {
+			intervals.push(intervalStart, z);
+			intervalStart = undefined;
+		}
 		start = end;
 	}
-	return Float64Array.from(compacted);
+
+	// An unbalanced ray belongs to an open or inconsistently wound mesh. As
+	// before, its final unpaired span is ignored rather than filled to infinity.
+	return { intervals: Float64Array.from(intervals), balanced: winding === 0 };
 }
 
 /**
@@ -124,7 +139,7 @@ export class ModelLayerMaskRasterizer {
 	readonly transformedBounds;
 	readonly diagnostics: LayerMaskRasterizationDiagnostics;
 
-	readonly #crossingsByPixel: readonly (Float64Array | undefined)[];
+	readonly #intervalsByPixel: readonly (Float64Array | undefined)[];
 	readonly #intersectedPixelIndices: Uint32Array;
 
 	constructor(
@@ -151,7 +166,7 @@ export class ModelLayerMaskRasterizer {
 			Math.ceil(this.transformedBounds.max.z / this.layerHeightMm - LAYER_COUNT_EPSILON)
 		);
 
-		const rawCrossings: (number[] | undefined)[] = new Array(this.width * this.height);
+		const rawCrossings: (OrientedCrossing[] | undefined)[] = new Array(this.width * this.height);
 		const center = new Vector3(
 			(model.bounds.min.x + model.bounds.max.x) / 2,
 			(model.bounds.min.y + model.bounds.max.y) / 2,
@@ -188,6 +203,7 @@ export class ModelLayerMaskRasterizer {
 				verticalTriangleCount += 1;
 				continue;
 			}
+			const windingDelta = Math.sign(area) as -1 | 1;
 			if (area < 0) {
 				[b, c] = [c, b];
 				area = -area;
@@ -242,7 +258,7 @@ export class ModelLayerMaskRasterizer {
 
 					const z = (weightA * a.z + weightB * b.z + weightC * c.z) / area;
 					const pixelIndex = row * this.width + column;
-					(rawCrossings[pixelIndex] ??= []).push(z);
+					(rawCrossings[pixelIndex] ??= []).push({ z, windingDelta });
 				}
 			}
 		}
@@ -250,18 +266,18 @@ export class ModelLayerMaskRasterizer {
 		let intersectedPixelCount = 0;
 		let oddIntersectionPixelCount = 0;
 		const intersectedPixelIndices: number[] = [];
-		const compacted: (Float64Array | undefined)[] = new Array(rawCrossings.length);
+		const intervalsByPixel: (Float64Array | undefined)[] = new Array(rawCrossings.length);
 		for (let pixelIndex = 0; pixelIndex < rawCrossings.length; pixelIndex += 1) {
 			const crossings = rawCrossings[pixelIndex];
 			if (!crossings) continue;
-			const compactedCrossings = compactCrossings(crossings);
-			compacted[pixelIndex] = compactedCrossings;
+			const { intervals, balanced } = unionIntervals(crossings);
+			intervalsByPixel[pixelIndex] = intervals;
 			intersectedPixelIndices.push(pixelIndex);
 			intersectedPixelCount += 1;
-			if (compactedCrossings.length % 2 !== 0) oddIntersectionPixelCount += 1;
+			if (!balanced) oddIntersectionPixelCount += 1;
 		}
 
-		this.#crossingsByPixel = compacted;
+		this.#intervalsByPixel = intervalsByPixel;
 		this.#intersectedPixelIndices = Uint32Array.from(intersectedPixelIndices);
 		this.diagnostics = {
 			triangleCount: model.positions.length / 9,
@@ -282,12 +298,12 @@ export class ModelLayerMaskRasterizer {
 		const data = new Uint8Array(this.width * this.height);
 
 		for (const pixelIndex of this.#intersectedPixelIndices) {
-			const crossings = this.#crossingsByPixel[pixelIndex];
-			if (!crossings) continue;
-			for (let crossingIndex = 0; crossingIndex + 1 < crossings.length; crossingIndex += 2) {
+			const intervals = this.#intervalsByPixel[pixelIndex];
+			if (!intervals) continue;
+			for (let intervalIndex = 0; intervalIndex + 1 < intervals.length; intervalIndex += 2) {
 				if (
-					z + CROSSING_MERGE_EPSILON_MM >= crossings[crossingIndex] &&
-					z - CROSSING_MERGE_EPSILON_MM <= crossings[crossingIndex + 1]
+					z + CROSSING_MERGE_EPSILON_MM >= intervals[intervalIndex] &&
+					z - CROSSING_MERGE_EPSILON_MM <= intervals[intervalIndex + 1]
 				) {
 					data[pixelIndex] = 1;
 					break;
@@ -306,13 +322,13 @@ export class ModelLayerMaskRasterizer {
 			throw new Error(`row must be an integer from 0 to ${this.height - 1}.`);
 		}
 
-		const crossings = this.#crossingsByPixel[row * this.width + column];
-		if (!crossings) return [];
+		const intervalsForPixel = this.#intervalsByPixel[row * this.width + column];
+		if (!intervalsForPixel) return [];
 		const intervals: VerticalModelInterval[] = [];
-		for (let crossingIndex = 0; crossingIndex + 1 < crossings.length; crossingIndex += 2) {
+		for (let intervalIndex = 0; intervalIndex + 1 < intervalsForPixel.length; intervalIndex += 2) {
 			intervals.push({
-				minimumZMm: crossings[crossingIndex],
-				maximumZMm: crossings[crossingIndex + 1]
+				minimumZMm: intervalsForPixel[intervalIndex],
+				maximumZMm: intervalsForPixel[intervalIndex + 1]
 			});
 		}
 		return intervals;

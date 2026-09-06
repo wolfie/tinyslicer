@@ -224,6 +224,18 @@ describe('buildPreviewMesh', () => {
 		expect(horizontalCapCount(result.positions, result.normals, 0, -1)).toBeGreaterThan(0);
 	});
 
+	it('unions overlapping model shells in the voxel preview', () => {
+		const result = buildPreviewMesh(
+			meshInput([...boxPositions([3, 4, 0], [10, 12, 1]), ...boxPositions([8, 4, 0], [13, 12, 1])]),
+			undefined,
+			OPTIONS
+		);
+
+		// The two footprints overlap by 2 × 8 mm. Their Boolean union is
+		// 10 × 8 mm; parity/XOR would incorrectly leave only 64 mm².
+		expect(directedHorizontalArea(result.positions, result.normals, -1)).toBeCloseTo(80, 5);
+	});
+
 	it('fuses supports into the same mesh, reaching down to the plate under a floating model', () => {
 		const floating = boxPositions([5, 5, 4], [11, 11, 7]);
 

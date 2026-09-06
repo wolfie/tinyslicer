@@ -43,6 +43,18 @@ function boxPositions(minimum: Point, maximum: Point): number[] {
 	return triangles.flat(2);
 }
 
+function reverseWinding(positions: readonly number[]): number[] {
+	const reversed: number[] = [];
+	for (let offset = 0; offset < positions.length; offset += 9) {
+		reversed.push(
+			...positions.slice(offset, offset + 3),
+			...positions.slice(offset + 6, offset + 9),
+			...positions.slice(offset + 3, offset + 6)
+		);
+	}
+	return reversed;
+}
+
 function boundsFor(positions: Float32Array): Bounds3 {
 	const bounds: Bounds3 = {
 		min: { x: Infinity, y: Infinity, z: Infinity },
@@ -150,6 +162,42 @@ describe('ModelLayerMaskRasterizer', () => {
 
 		expect(Array.from(rasterizer.masks(), (mask) => mask.data[5])).toEqual([1, 1, 1, 1]);
 		expect(rasterizer.diagnostics.oddIntersectionPixelCount).toBe(0);
+	});
+
+	it('unions overlapping closed solids instead of cancelling their overlap', () => {
+		const positions = [
+			...boxPositions([0, 1, 0], [3, 3, 1]),
+			...boxPositions([1, 1, 0], [4, 3, 1])
+		];
+		const rasterizer = new ModelLayerMaskRasterizer(
+			modelFromPositions(positions),
+			undefined,
+			undefined,
+			FOUR_BY_FOUR_PROFILE
+		);
+
+		expect(rows(rasterizer.createLayerMask(0).data, 4)).toEqual(['....', '####', '####', '....']);
+		expect(rasterizer.verticalIntervalsAtPixel(1, 1)).toEqual([{ minimumZMm: 0, maximumZMm: 1 }]);
+		expect(rasterizer.diagnostics.oddIntersectionPixelCount).toBe(0);
+	});
+
+	it('preserves a correctly oriented enclosed cavity', () => {
+		const positions = [
+			...boxPositions([0, 0, 0], [4, 4, 2]),
+			...reverseWinding(boxPositions([1, 1, 0.5], [3, 3, 1.5]))
+		];
+		const rasterizer = new ModelLayerMaskRasterizer(
+			modelFromPositions(positions),
+			undefined,
+			undefined,
+			FOUR_BY_FOUR_PROFILE
+		);
+
+		expect(rows(rasterizer.createLayerMask(1).data, 4)).toEqual(['####', '#..#', '#..#', '####']);
+		expect(rasterizer.verticalIntervalsAtPixel(1, 1)).toEqual([
+			{ minimumZMm: 0, maximumZMm: 0.5 },
+			{ minimumZMm: 1.5, maximumZMm: 2 }
+		]);
 	});
 
 	it('reports odd crossings from an open mesh and ignores an unpaired crossing', () => {
