@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { WorkflowStep } from './workspace-state.svelte';
+	import logo from '$lib/assets/logo.svg';
 
 	type Props = {
 		currentStep: WorkflowStep;
@@ -58,18 +59,11 @@
 		class="inline-flex w-fit items-center gap-[10px] text-[16px] font-[650] tracking-[-0.02em] text-ink-bright"
 		aria-label="TinySlicer"
 	>
-		<span
-			class="grid size-8 place-items-center rounded-[9px] border border-[#27527a] bg-[linear-gradient(145deg,#18324a,#101c29)] shadow-[0_7px_22px_rgba(0,0,0,0.3)]"
-			aria-hidden="true"
-		>
-			<svg
-				class="w-5 fill-blue/10 stroke-blue [stroke-width:1.4] [stroke-linejoin:round]"
-				viewBox="0 0 32 32"
-			>
-				<path d="M16 3.5 27 9.7v12.6L16 28.5 5 22.3V9.7L16 3.5Z" />
-				<path d="m5.5 10 10.5 6 10.5-6M16 16v12" />
-			</svg>
-		</span>
+		<img
+			class="size-8 rounded-[9px] border border-[#27527a] shadow-[0_7px_22px_rgba(0,0,0,0.3)]"
+			src={logo}
+			alt=""
+		/>
 		<span>Tiny<span class="text-blue">Slicer</span></span>
 	</div>
 	<nav
