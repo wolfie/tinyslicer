@@ -2,8 +2,10 @@ import type {
 	ExportSliceWorkerMessage,
 	ExportSliceWorkerRequest
 } from '$lib/slicing/export-slice-worker-types';
+import { encodeGrayscalePng } from '$lib/slicing/grayscale-png';
 import { createTinyMakerGcode, validateProjectName } from '$lib/slicing/tinymaker-project';
 import { StoredZipArchive } from '$lib/slicing/zip-archive';
+import { TINYMAKER_PROFILE } from '$lib/printer/tinymaker';
 import type { RaftIsland } from '$lib/supports/raft-plan';
 import type { ModelRotation, ModelTranslation } from './build-volume-renderer/types';
 import type { ImportedStlModel } from './stl-importer';
@@ -59,6 +61,12 @@ function defaultDownloadFile(blob: Blob, filename: string) {
 
 function isPickerCancellation(error: unknown): boolean {
 	return error instanceof DOMException && error.name === 'AbortError';
+}
+
+async function createEmptyTinyMakerLayer(): Promise<ArrayBuffer> {
+	const { x: width, y: height } = TINYMAKER_PROFILE.resolution;
+	const png = await encodeGrayscalePng(width, height, new Uint8Array(width * height));
+	return png.buffer as ArrayBuffer;
 }
 
 export class ProjectExport {
@@ -288,6 +296,13 @@ export class ProjectExport {
 							return;
 						}
 
+						// At 0.1 mm the firmware halves the file count, then prints odd-numbered PNGs.
+						// An even blank tail keeps the final real odd layer reachable when the stack is odd.
+						// Count: https://github.com/TinyMaker3D/TinyMaker-Open-Source-3D-Printer/blob/65fab365ebbd2e3df5ce9552eac79efd6ea75f9a/Firmware/TinyMaker_Firmware_v1_0_2/Interface.ino#L177-L183
+						// Selection: https://github.com/TinyMaker3D/TinyMaker-Open-Source-3D-Printer/blob/65fab365ebbd2e3df5ce9552eac79efd6ea75f9a/Firmware/TinyMaker_Firmware_v1_0_2/PNG.ino#L47-L57
+						if (message.totalLayers % 2 !== 0) {
+							await writeLayer(message.totalLayers + 1, await createEmptyTinyMakerLayer());
+						}
 						await completeProject(message);
 						this.completedLayers = message.totalLayers;
 						this.totalLayers = message.totalLayers;

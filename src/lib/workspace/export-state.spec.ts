@@ -1,3 +1,4 @@
+import { inflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 
 import type {
@@ -70,30 +71,45 @@ class StubSliceWorker {
 	onmessage: ((event: MessageEvent<ExportSliceWorkerMessage>) => void) | null = null;
 	onerror: ((event: ErrorEvent) => void) | null = null;
 	#id = 0;
+	#nextLayer = 1;
+
+	constructor(private readonly totalLayers = 1) {}
+
+	#emitNext() {
+		if (this.#nextLayer > this.totalLayers) {
+			this.onmessage?.({
+				data: {
+					type: 'complete',
+					id: this.#id,
+					totalLayers: this.totalLayers,
+					volumeCubicMm: 10
+				}
+			} as MessageEvent<ExportSliceWorkerMessage>);
+			return;
+		}
+		this.onmessage?.({
+			data: {
+				type: 'layer',
+				id: this.#id,
+				layerNumber: this.#nextLayer,
+				totalLayers: this.totalLayers,
+				png: Uint8Array.from([137, 80, 78, 71, this.#nextLayer++]).buffer
+			}
+		} as MessageEvent<ExportSliceWorkerMessage>);
+	}
 
 	postMessage(request: ExportSliceWorkerRequest) {
 		if (request.type === 'start') {
 			this.#id = request.id;
+			this.#nextLayer = 1;
 			queueMicrotask(() => {
 				this.onmessage?.({
-					data: { type: 'started', id: this.#id, totalLayers: 1 }
+					data: { type: 'started', id: this.#id, totalLayers: this.totalLayers }
 				} as MessageEvent<ExportSliceWorkerMessage>);
-				this.onmessage?.({
-					data: {
-						type: 'layer',
-						id: this.#id,
-						layerNumber: 1,
-						totalLayers: 1,
-						png: Uint8Array.from([137, 80, 78, 71]).buffer
-					}
-				} as MessageEvent<ExportSliceWorkerMessage>);
+				this.#emitNext();
 			});
 		} else if (request.type === 'continue') {
-			queueMicrotask(() =>
-				this.onmessage?.({
-					data: { type: 'complete', id: this.#id, totalLayers: 1, volumeCubicMm: 10 }
-				} as MessageEvent<ExportSliceWorkerMessage>)
-			);
+			queueMicrotask(() => this.#emitNext());
 		}
 	}
 
@@ -140,6 +156,17 @@ async function zipEntryNames(blob: Blob): Promise<string[]> {
 	return names;
 }
 
+function pngChunk(png: Uint8Array, expectedType: string): Uint8Array {
+	const view = new DataView(png.buffer, png.byteOffset, png.byteLength);
+	for (let offset = 8; offset < png.byteLength;) {
+		const length = view.getUint32(offset);
+		const type = new TextDecoder().decode(png.subarray(offset + 4, offset + 8));
+		if (type === expectedType) return png.slice(offset + 8, offset + 8 + length);
+		offset += 12 + length;
+	}
+	throw new Error(`PNG chunk ${expectedType} was not found.`);
+}
+
 describe('ProjectExport', () => {
 	it('creates one new folder and streams every expected project file into it', async () => {
 		const parent = new MemoryDirectoryHandle('Prints');
@@ -161,9 +188,17 @@ describe('ProjectExport', () => {
 			'preview.png',
 			'preview_cropping.png',
 			'1.png',
+			'2.png',
 			'run.gcode'
 		]);
 		expect(project!.files.get('run.gcode')?.data).toContain(';totalLayer:1');
+		const padding = project!.files.get('2.png')?.data;
+		expect(padding).toBeInstanceOf(ArrayBuffer);
+		expect(
+			inflateSync(pngChunk(new Uint8Array(padding as ArrayBuffer), 'IDAT')).every(
+				(byte) => byte === 0
+			)
+		).toBe(true);
 	});
 
 	it('downloads a ZIP containing the complete project folder', async () => {
@@ -189,7 +224,27 @@ describe('ProjectExport', () => {
 			'Tooth/preview.png',
 			'Tooth/preview_cropping.png',
 			'Tooth/1.png',
+			'Tooth/2.png',
 			'Tooth/run.gcode'
+		]);
+	});
+
+	it('does not add padding when the sliced layer count is already even', async () => {
+		const parent = new MemoryDirectoryHandle('Prints');
+		const projectExport = new ProjectExport({
+			chooseDirectory: async () => parent as unknown as FileSystemDirectoryHandle,
+			createWorker: async () => new StubSliceWorker(2) as unknown as Worker,
+			renderPreviews: async () => ({ preview: new Blob(), cropped: new Blob() })
+		});
+
+		await expect(projectExport.start(exportInput(), 'Tooth')).resolves.toBe(true);
+
+		expect([...parent.directories.get('Tooth')!.files.keys()]).toEqual([
+			'preview.png',
+			'preview_cropping.png',
+			'1.png',
+			'2.png',
+			'run.gcode'
 		]);
 	});
 
