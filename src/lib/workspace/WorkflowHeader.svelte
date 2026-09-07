@@ -65,6 +65,9 @@
 			alt=""
 		/>
 		<span>Tiny<span class="text-blue">Slicer</span></span>
+		<span class="text-[10px] font-normal tracking-[0.02em] text-ink-4" aria-hidden="true">
+			{__BUILD_LABEL__}
+		</span>
 	</div>
 	<nav
 		class="flex items-center gap-[10px] max-compact:gap-[7px] max-tablet:hidden"

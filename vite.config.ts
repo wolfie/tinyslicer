@@ -1,10 +1,37 @@
 import tailwindcss from '@tailwindcss/vite';
+import { execFileSync } from 'node:child_process';
 import { defineConfig } from 'vitest/config';
 import { playwright } from '@vitest/browser-playwright';
 import adapter from '@sveltejs/adapter-node';
 import { sveltekit } from '@sveltejs/kit/vite';
 
+function gitValue(args: string[]): string | null {
+	try {
+		return execFileSync('git', args, {
+			cwd: process.cwd(),
+			encoding: 'utf8',
+			stdio: ['ignore', 'pipe', 'ignore']
+		}).trim();
+	} catch {
+		return null;
+	}
+}
+
+function buildLabel(): string {
+	const commitCount = gitValue(['rev-list', '--count', 'HEAD']);
+	const commitDate = gitValue(['log', '-1', '--format=%cs']);
+
+	if (/^\d+$/.test(commitCount ?? '') && /^\d{4}-\d{2}-\d{2}$/.test(commitDate ?? '')) {
+		return `build ${commitCount} ${commitDate}`;
+	}
+
+	return 'build unknown';
+}
+
 export default defineConfig({
+	define: {
+		__BUILD_LABEL__: JSON.stringify(buildLabel())
+	},
 	plugins: [
 		tailwindcss(),
 		sveltekit({

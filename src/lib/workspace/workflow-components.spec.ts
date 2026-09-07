@@ -54,6 +54,7 @@ describe('workflow UI', () => {
 		expect(body).toContain('Supports');
 		expect(body).toContain('Preview');
 		expect(body).toContain('Export');
+		expect(body).toMatch(/build \d+ \d{4}-\d{2}-\d{2}/);
 		expect(body).toMatch(/disabled=""><b[^>]*>2<\/b>Supports/);
 	});
 
