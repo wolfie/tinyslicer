@@ -4,7 +4,7 @@ import type {
 	PreviewMeshWorkerMessage
 } from '$lib/slicing/preview-mesh-worker-types';
 import type { RaftIsland } from '$lib/supports/raft-plan';
-import type { ModelRotation, ModelTranslation } from './build-volume-renderer/types';
+import type { ModelRotation, ModelScale, ModelTranslation } from './build-volume-renderer/types';
 import type { ImportedStlModel } from './stl-importer';
 import type { SupportPlan } from './supports';
 
@@ -16,6 +16,7 @@ export type PreviewBuildInput = {
 	model: ImportedStlModel;
 	translation: ModelTranslation;
 	rotation: ModelRotation;
+	scale?: ModelScale;
 	supportPlan: SupportPlan;
 	raftIslands: readonly RaftIsland[];
 };
@@ -33,6 +34,7 @@ function signatureFor(input: PreviewBuildInput): string {
 		r.y,
 		r.z,
 		r.w,
+		input.scale ?? 1,
 		input.supportPlan.structures.map((structure) => structure.id).join(','),
 		input.raftIslands
 			.map(
@@ -138,6 +140,7 @@ export class PreviewBuild {
 			bounds: input.model.bounds,
 			translation: { ...input.translation },
 			rotation: { ...input.rotation },
+			scale: input.scale ?? 1,
 			supportPlan: input.supportPlan,
 			raftIslands: input.raftIslands
 		};

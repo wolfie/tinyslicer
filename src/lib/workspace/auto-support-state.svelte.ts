@@ -3,7 +3,7 @@ import type {
 	AutoSupportWorkerMessage
 } from '$lib/supports/auto-support-worker-types';
 import type { AutoSupportDiagnostics } from '$lib/supports/generate-auto-supports';
-import type { ModelRotation, ModelTranslation } from './build-volume-renderer/types';
+import type { ModelRotation, ModelScale, ModelTranslation } from './build-volume-renderer/types';
 import type { ImportedStlModel } from './stl-importer';
 import type { ModelSurfaceHit } from './supports';
 
@@ -13,6 +13,7 @@ export type AutoSupportBuildInput = {
 	model: ImportedStlModel;
 	translation: ModelTranslation;
 	rotation: ModelRotation;
+	scale?: ModelScale;
 };
 
 export type AutoSupportOutcome = {
@@ -32,7 +33,8 @@ function signatureFor(input: AutoSupportBuildInput): string {
 		r.x,
 		r.y,
 		r.z,
-		r.w
+		r.w,
+		input.scale ?? 1
 	].join('|');
 }
 
@@ -130,7 +132,8 @@ export class AutoSupportBuild {
 			positions,
 			bounds: input.model.bounds,
 			translation: { ...input.translation },
-			rotation: { ...input.rotation }
+			rotation: { ...input.rotation },
+			scale: input.scale ?? 1
 		};
 		worker.postMessage(request, [positions.buffer]);
 	}

@@ -38,6 +38,13 @@
 		if (byteLength < 1024 * 1024) return `${(byteLength / 1024).toFixed(1)} KB`;
 		return `${(byteLength / (1024 * 1024)).toFixed(1)} MB`;
 	}
+
+	function handleScaleChange(event: Event) {
+		const input = event.currentTarget as HTMLInputElement;
+		const percent = Number(input.value);
+		if (Number.isFinite(percent) && percent > 0) scene.setScale(percent / 100);
+		input.value = String(Math.round(scene.scale * 10000) / 100);
+	}
 </script>
 
 <aside
@@ -79,6 +86,47 @@
 						)} · Y
 						{formatDegrees(scene.rotationDegrees.y)} · Z
 						{formatDegrees(scene.rotationDegrees.z)}
+					</div>
+					<div class="mt-[7px] rounded-[7px] border border-blue/25 bg-blue/10 px-[9px] py-2">
+						<div class="flex items-center justify-between gap-2">
+							<label class="text-[10px] font-semibold text-[#86bddf]" for="model-scale"
+								>Uniform scale</label
+							>
+							<div
+								class="flex items-center rounded-md border border-blue/25 bg-[rgba(8,18,28,0.5)] focus-within:border-blue/60"
+							>
+								<input
+									id="model-scale"
+									type="number"
+									min="1"
+									max="10000"
+									step="1"
+									value={Math.round(scene.scale * 10000) / 100}
+									onchange={handleScaleChange}
+									class="w-[62px] bg-transparent px-2 py-1 text-right text-[10px] font-semibold text-ink-2 tabular-nums outline-none"
+									aria-label="Model scale percentage"
+								/>
+								<span class="pr-2 text-[9px] text-ink-5">%</span>
+							</div>
+						</div>
+						<div class="mt-2 flex gap-1.5">
+							<button
+								type="button"
+								class="u-chip flex-1 cursor-pointer justify-center border-blue/25 text-[#8fc8ec] hover:bg-blue/10 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue"
+								onclick={scene.fitToBuildVolume}
+								title="Scale to the largest size that fits the support-safe build area"
+							>
+								Fit build area
+							</button>
+							<button
+								type="button"
+								class="u-chip cursor-pointer justify-center border-line text-ink-4 hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue"
+								onclick={scene.resetScale}
+								disabled={scene.scale === 1}
+							>
+								Reset
+							</button>
+						</div>
 					</div>
 				{:else if workflow.step === 'supports'}
 					<div class="rounded-lg border border-green/30 bg-green/12 p-3">

@@ -15,9 +15,10 @@ import { createBuildVolumeClippingPlanes } from './build-volume-scene';
 import {
 	IDENTITY_MODEL_ROTATION,
 	modelRotationQuaternion,
+	DEFAULT_MODEL_SCALE,
 	ZERO_MODEL_TRANSLATION
 } from './model-transform';
-import type { ModelRotation, ModelTranslation } from './types';
+import type { ModelRotation, ModelScale, ModelTranslation } from './types';
 
 const ROTATION_RING_GAP = 2.5;
 const MIN_ROTATION_RING_RADIUS = 5;
@@ -28,6 +29,7 @@ export class RenderedModel {
 	currentModel: ImportedStlModel | null = null;
 	currentTranslation: ModelTranslation = ZERO_MODEL_TRANSLATION;
 	currentRotation: ModelRotation = IDENTITY_MODEL_ROTATION;
+	currentScale: ModelScale = DEFAULT_MODEL_SCALE;
 
 	#scene: Scene;
 	#modelMaterial = new MeshStandardMaterial({
@@ -70,11 +72,17 @@ export class RenderedModel {
 	}
 
 	get worldCenter(): Vector3 {
+		const scaledCenterOffset = new Vector3(
+			0,
+			0,
+			((this.currentModel?.bounds.max.z ?? 0) - (this.currentModel?.bounds.min.z ?? 0)) / 2
+		).multiplyScalar(this.currentScale - 1);
 		return this.center
 			.clone()
 			.add(
 				new Vector3(this.currentTranslation.x, this.currentTranslation.y, this.currentTranslation.z)
-			);
+			)
+			.add(scaledCenterOffset);
 	}
 
 	setModel(model: ImportedStlModel | null): boolean {
@@ -116,29 +124,34 @@ export class RenderedModel {
 		return true;
 	}
 
-	setTransform(translation: ModelTranslation, rotation: ModelRotation) {
+	setTransform(translation: ModelTranslation, rotation: ModelRotation, scale: ModelScale) {
 		this.#supportRiskGeometryDirty =
 			this.#supportRiskGeometryDirty ||
 			translation.z !== this.currentTranslation.z ||
 			rotation.x !== this.currentRotation.x ||
 			rotation.y !== this.currentRotation.y ||
 			rotation.z !== this.currentRotation.z ||
-			rotation.w !== this.currentRotation.w;
+			rotation.w !== this.currentRotation.w ||
+			scale !== this.currentScale;
 		this.currentTranslation = translation;
 		this.currentRotation = rotation;
+		this.currentScale = scale;
 		const quaternion = modelRotationQuaternion(rotation);
 		const position = this.worldCenter;
 		if (this.#modelMesh) {
 			this.#modelMesh.position.copy(position);
 			this.#modelMesh.quaternion.copy(quaternion);
+			this.#modelMesh.scale.setScalar(scale);
 		}
 		if (this.#outsideModelMesh) {
 			this.#outsideModelMesh.position.copy(position);
 			this.#outsideModelMesh.quaternion.copy(quaternion);
+			this.#outsideModelMesh.scale.setScalar(scale);
 		}
 		if (this.#supportRiskMesh) {
 			this.#supportRiskMesh.position.copy(position);
 			this.#supportRiskMesh.quaternion.copy(quaternion);
+			this.#supportRiskMesh.scale.setScalar(scale);
 		}
 		if (this.#supportRiskMesh?.visible && this.#supportRiskGeometryDirty) {
 			this.#refreshSupportRiskGeometry();
@@ -171,7 +184,9 @@ export class RenderedModel {
 		const preview = detectSupportRiskTriangles(
 			this.currentModel,
 			this.currentTranslation,
-			this.currentRotation
+			this.currentRotation,
+			undefined,
+			this.currentScale
 		);
 		const geometry = new BufferGeometry();
 		geometry.setAttribute('position', new BufferAttribute(preview.positions, 3));

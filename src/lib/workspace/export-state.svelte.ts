@@ -7,7 +7,7 @@ import { createTinyMakerGcode, validateProjectName } from '$lib/slicing/tinymake
 import { StoredZipArchive } from '$lib/slicing/zip-archive';
 import { TINYMAKER_PROFILE } from '$lib/printer/tinymaker';
 import type { RaftIsland } from '$lib/supports/raft-plan';
-import type { ModelRotation, ModelTranslation } from './build-volume-renderer/types';
+import type { ModelRotation, ModelScale, ModelTranslation } from './build-volume-renderer/types';
 import type { ImportedStlModel } from './stl-importer';
 import type { SupportPlan } from './supports';
 import { createNewProjectDirectory, writeNewProjectFile } from './project-files';
@@ -21,6 +21,7 @@ export type ProjectExportInput = {
 	model: ImportedStlModel;
 	translation: ModelTranslation;
 	rotation: ModelRotation;
+	scale?: ModelScale;
 	supportPlan: SupportPlan;
 	raftIslands: readonly RaftIsland[];
 	previewMesh: PreviewMeshData;
@@ -323,6 +324,7 @@ export class ProjectExport {
 				bounds: input.model.bounds,
 				translation: { ...input.translation },
 				rotation: { ...input.rotation },
+				scale: input.scale ?? 1,
 				supportPlan: input.supportPlan,
 				raftIslands: input.raftIslands
 			};

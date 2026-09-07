@@ -1,5 +1,9 @@
 import type { RaftIsland } from '$lib/supports/raft-plan';
-import type { ModelRotation, ModelTranslation } from '$lib/workspace/build-volume-renderer/types';
+import type {
+	ModelRotation,
+	ModelScale,
+	ModelTranslation
+} from '$lib/workspace/build-volume-renderer/types';
 import type { ImportedStlModel } from '$lib/workspace/stl-importer';
 import type { SupportPlan } from '$lib/workspace/supports';
 import { LayerCoverageRasterizer, type CoverageMask } from './layer-coverage';
@@ -12,6 +16,7 @@ export type PreviewMeshInput = {
 	model: Pick<ImportedStlModel, 'positions' | 'bounds'>;
 	translation: ModelTranslation;
 	rotation: ModelRotation;
+	scale?: ModelScale;
 	supportPlan: SupportPlan;
 	raftIslands?: readonly RaftIsland[];
 };
@@ -54,7 +59,8 @@ export function buildPreviewMesh(
 		input.supportPlan,
 		input.raftIslands ?? [],
 		options.profile,
-		options.supersample
+		options.supersample,
+		input.scale ?? 1
 	);
 	const { layerCount, layerHeightMm, width, height } = rasterizer;
 	const pitchX = rasterizer.pixelPitchMm.x;

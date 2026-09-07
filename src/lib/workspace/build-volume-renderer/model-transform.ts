@@ -2,7 +2,7 @@ import { Euler, Quaternion, Vector3 } from 'three';
 
 import { TINYMAKER_PROFILE } from '$lib/printer/tinymaker';
 import type { Bounds3, ImportedStlModel, Point3 } from '../stl-importer';
-import type { ModelRotation, ModelTranslation } from './types';
+import type { ModelRotation, ModelScale, ModelTranslation } from './types';
 
 const BUILD_VOLUME = TINYMAKER_PROFILE.buildVolume;
 const SMALL_TRANSLATION_STEP = 1;
@@ -13,6 +13,73 @@ export const ROTATION_SNAP_DEGREES = 22.5;
 const ROTATION_SNAP_RADIANS = (ROTATION_SNAP_DEGREES * Math.PI) / 180;
 export const ZERO_MODEL_TRANSLATION: ModelTranslation = { x: 0, y: 0, z: 0 };
 export const IDENTITY_MODEL_ROTATION: ModelRotation = { x: 0, y: 0, z: 0, w: 1 };
+export const DEFAULT_MODEL_SCALE: ModelScale = 1;
+export const MIN_MODEL_SCALE = 0.01;
+export const MAX_MODEL_SCALE = 100;
+
+export function clampModelScale(scale: number): ModelScale {
+	if (!Number.isFinite(scale)) return DEFAULT_MODEL_SCALE;
+	return Math.min(MAX_MODEL_SCALE, Math.max(MIN_MODEL_SCALE, scale));
+}
+
+export function modelBottomCenter(bounds: Bounds3): Vector3 {
+	return new Vector3(
+		(bounds.min.x + bounds.max.x) / 2,
+		(bounds.min.y + bounds.max.y) / 2,
+		bounds.min.z
+	);
+}
+
+export function createModelPointTransformer(
+	bounds: Bounds3,
+	translation: ModelTranslation = ZERO_MODEL_TRANSLATION,
+	rotation: ModelRotation = IDENTITY_MODEL_ROTATION,
+	scale: ModelScale = DEFAULT_MODEL_SCALE
+): (x: number, y: number, z: number, target?: Vector3) => Vector3 {
+	const center = new Vector3(
+		(bounds.min.x + bounds.max.x) / 2,
+		(bounds.min.y + bounds.max.y) / 2,
+		(bounds.min.z + bounds.max.z) / 2
+	);
+	const quaternion = modelRotationQuaternion(rotation);
+	const worldCenter = center
+		.clone()
+		.add(new Vector3(translation.x, translation.y, translation.z))
+		.add(
+			center
+				.clone()
+				.sub(modelBottomCenter(bounds))
+				.multiplyScalar(scale - 1)
+		);
+	return (x, y, z, target = new Vector3()) =>
+		target
+			.set(x - center.x, y - center.y, z - center.z)
+			.multiplyScalar(scale)
+			.applyQuaternion(quaternion)
+			.add(worldCenter);
+}
+
+/**
+ * Transforms one model-space point with uniform scale anchored at the model's
+ * bottom-center. Scaling also moves the model's center, so subsequent rotation
+ * happens around the center of the scaled model. At scale 1 this is identical
+ * to the original center-pivoted rotation transform.
+ */
+export function transformModelPoint(
+	point: Point3,
+	bounds: Bounds3,
+	translation: ModelTranslation = ZERO_MODEL_TRANSLATION,
+	rotation: ModelRotation = IDENTITY_MODEL_ROTATION,
+	scale: ModelScale = DEFAULT_MODEL_SCALE,
+	target = new Vector3()
+): Vector3 {
+	return createModelPointTransformer(bounds, translation, rotation, scale)(
+		point.x,
+		point.y,
+		point.z,
+		target
+	);
+}
 
 export function modelRotationQuaternion(rotation: ModelRotation): Quaternion {
 	return new Quaternion(rotation.x, rotation.y, rotation.z, rotation.w).normalize();
@@ -73,25 +140,17 @@ export function translateModelBounds(
 export function transformModelBounds(
 	bounds: Bounds3,
 	translation: ModelTranslation = ZERO_MODEL_TRANSLATION,
-	rotation: ModelRotation = IDENTITY_MODEL_ROTATION
+	rotation: ModelRotation = IDENTITY_MODEL_ROTATION,
+	scale: ModelScale = DEFAULT_MODEL_SCALE
 ): Bounds3 {
-	const center = new Vector3(
-		(bounds.min.x + bounds.max.x) / 2,
-		(bounds.min.y + bounds.max.y) / 2,
-		(bounds.min.z + bounds.max.z) / 2
-	);
-	const quaternion = modelRotationQuaternion(rotation);
 	const transformedMin = new Vector3(Infinity, Infinity, Infinity);
 	const transformedMax = new Vector3(-Infinity, -Infinity, -Infinity);
+	const transformPoint = createModelPointTransformer(bounds, translation, rotation, scale);
 
 	for (const x of [bounds.min.x, bounds.max.x]) {
 		for (const y of [bounds.min.y, bounds.max.y]) {
 			for (const z of [bounds.min.z, bounds.max.z]) {
-				const corner = new Vector3(x, y, z)
-					.sub(center)
-					.applyQuaternion(quaternion)
-					.add(center)
-					.add(new Vector3(translation.x, translation.y, translation.z));
+				const corner = transformPoint(x, y, z);
 				transformedMin.min(corner);
 				transformedMax.max(corner);
 			}
@@ -107,42 +166,33 @@ export function transformModelBounds(
 export function transformModelGeometryBounds(
 	model: Pick<ImportedStlModel, 'bounds' | 'positions'>,
 	translation: ModelTranslation = ZERO_MODEL_TRANSLATION,
-	rotation: ModelRotation = IDENTITY_MODEL_ROTATION
+	rotation: ModelRotation = IDENTITY_MODEL_ROTATION,
+	scale: ModelScale = DEFAULT_MODEL_SCALE
 ): Bounds3 {
 	if (model.positions.length < 3) {
-		return transformModelBounds(model.bounds, translation, rotation);
+		return transformModelBounds(model.bounds, translation, rotation, scale);
 	}
 
-	const center = new Vector3(
-		(model.bounds.min.x + model.bounds.max.x) / 2,
-		(model.bounds.min.y + model.bounds.max.y) / 2,
-		(model.bounds.min.z + model.bounds.max.z) / 2
-	);
-	const quaternion = modelRotationQuaternion(rotation);
 	const transformedMin = new Vector3(Infinity, Infinity, Infinity);
 	const transformedMax = new Vector3(-Infinity, -Infinity, -Infinity);
 	const vertex = new Vector3();
+	const transformPoint = createModelPointTransformer(model.bounds, translation, rotation, scale);
 
 	for (let index = 0; index < model.positions.length; index += 3) {
-		vertex
-			.set(
-				model.positions[index] - center.x,
-				model.positions[index + 1] - center.y,
-				model.positions[index + 2] - center.z
-			)
-			.applyQuaternion(quaternion)
-			.add(center);
+		transformPoint(
+			model.positions[index],
+			model.positions[index + 1],
+			model.positions[index + 2],
+			vertex
+		);
 		transformedMin.min(vertex);
 		transformedMax.max(vertex);
 	}
 
-	return translateModelBounds(
-		{
-			min: { x: transformedMin.x, y: transformedMin.y, z: transformedMin.z },
-			max: { x: transformedMax.x, y: transformedMax.y, z: transformedMax.z }
-		},
-		translation
-	);
+	return {
+		min: { x: transformedMin.x, y: transformedMin.y, z: transformedMin.z },
+		max: { x: transformedMax.x, y: transformedMax.y, z: transformedMax.z }
+	};
 }
 
 export function areBoundsOutsideBuildVolume(bounds: Bounds3): boolean {
@@ -162,9 +212,12 @@ export function firstBuildVolumeOverflowDirection(bounds: Bounds3): Point3 | nul
 export function isModelOutsideBuildVolume(
 	model: ImportedStlModel,
 	translation: ModelTranslation = ZERO_MODEL_TRANSLATION,
-	rotation: ModelRotation = IDENTITY_MODEL_ROTATION
+	rotation: ModelRotation = IDENTITY_MODEL_ROTATION,
+	scale: ModelScale = DEFAULT_MODEL_SCALE
 ): boolean {
-	return areBoundsOutsideBuildVolume(transformModelGeometryBounds(model, translation, rotation));
+	return areBoundsOutsideBuildVolume(
+		transformModelGeometryBounds(model, translation, rotation, scale)
+	);
 }
 
 // Candidate spins around Z, tried in this order: no rotation first, then the

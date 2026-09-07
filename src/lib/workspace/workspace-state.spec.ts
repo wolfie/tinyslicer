@@ -79,7 +79,11 @@ class StubAutoSupportWorker {
 			const { hits, diagnostics } = generateAutoSupportHits(
 				{ positions: request.positions, bounds: request.bounds },
 				request.translation,
-				request.rotation
+				request.rotation,
+				undefined,
+				undefined,
+				undefined,
+				request.scale
 			);
 			this.onmessage?.({
 				data: { type: 'result', id: request.id, hits, diagnostics }
@@ -133,9 +137,11 @@ describe('workspace workflow', () => {
 
 		workspace.scene.setTranslation({ x: 5, y: 6, z: 7 });
 		workspace.scene.setRotation({ x: 1, y: 0, z: 0, w: 0 });
+		workspace.scene.setScale(2);
 
 		expect(workspace.scene.translation).toEqual({ x: 0, y: 0, z: 0 });
 		expect(workspace.scene.rotation).toEqual({ x: 0, y: 0, z: 0, w: 1 });
+		expect(workspace.scene.scale).toBe(1);
 		expect(workspace.workflow.interactionMode).toBe('place-supports');
 	});
 

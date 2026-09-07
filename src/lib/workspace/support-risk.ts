@@ -1,7 +1,10 @@
 import { Vector3 } from 'three';
 
-import { modelRotationQuaternion } from './build-volume-renderer/model-transform';
-import type { ModelRotation, ModelTranslation } from './build-volume-renderer/types';
+import {
+	createModelPointTransformer,
+	modelRotationQuaternion
+} from './build-volume-renderer/model-transform';
+import type { ModelRotation, ModelScale, ModelTranslation } from './build-volume-renderer/types';
 import type { ImportedStlModel } from './stl-importer';
 
 export const SUPPORT_RISK_ANGLE_DEGREES = 45;
@@ -23,14 +26,10 @@ export function detectSupportRiskTriangles(
 	model: Pick<ImportedStlModel, 'bounds' | 'positions' | 'normals'>,
 	translation: ModelTranslation,
 	rotation: ModelRotation,
-	overhangAngleDegrees = SUPPORT_RISK_ANGLE_DEGREES
+	overhangAngleDegrees = SUPPORT_RISK_ANGLE_DEGREES,
+	scale: ModelScale = 1
 ): SupportRiskPreview {
 	const candidateOffsets: number[] = [];
-	const center = new Vector3(
-		(model.bounds.min.x + model.bounds.max.x) / 2,
-		(model.bounds.min.y + model.bounds.max.y) / 2,
-		(model.bounds.min.z + model.bounds.max.z) / 2
-	);
 	const quaternion = modelRotationQuaternion(rotation);
 	const maximumNormalAngle = (overhangAngleDegrees * Math.PI) / 180;
 	const minimumDownwardAlignment = Math.cos(maximumNormalAngle);
@@ -41,6 +40,7 @@ export function detectSupportRiskTriangles(
 	const edgeA = new Vector3();
 	const edgeB = new Vector3();
 	const worldVertex = new Vector3();
+	const transformPoint = createModelPointTransformer(model.bounds, translation, rotation, scale);
 
 	for (let offset = 0; offset + 8 < model.positions.length; offset += 9) {
 		first.fromArray(model.positions, offset);
@@ -61,12 +61,13 @@ export function detectSupportRiskTriangles(
 
 		let restsOnBuildPlate = true;
 		for (let vertexOffset = 0; vertexOffset < 9; vertexOffset += 3) {
-			worldVertex
-				.fromArray(model.positions, offset + vertexOffset)
-				.sub(center)
-				.applyQuaternion(quaternion)
-				.add(center);
-			const worldZ = worldVertex.z + translation.z;
+			transformPoint(
+				model.positions[offset + vertexOffset],
+				model.positions[offset + vertexOffset + 1],
+				model.positions[offset + vertexOffset + 2],
+				worldVertex
+			);
+			const worldZ = worldVertex.z;
 			if (Math.abs(worldZ) > BUILD_PLATE_CONTACT_TOLERANCE_MM) {
 				restsOnBuildPlate = false;
 				break;

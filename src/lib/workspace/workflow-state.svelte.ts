@@ -127,7 +127,8 @@ export class WorkflowState {
 		this.#supports.generateInitial({
 			model,
 			translation: this.#scene.translation,
-			rotation: this.#scene.rotation
+			rotation: this.#scene.rotation,
+			scale: this.#scene.scale
 		});
 	}
 
@@ -138,6 +139,7 @@ export class WorkflowState {
 			model,
 			translation: this.#scene.translation,
 			rotation: this.#scene.rotation,
+			scale: this.#scene.scale,
 			supportPlan: this.#supports.plan,
 			raftIslands: this.#supports.raftPlan.islands
 		});

@@ -115,6 +115,23 @@ describe('ModelLayerMaskRasterizer', () => {
 		expect(rasterizer.transformedBounds.max.x).toBe(3);
 	});
 
+	it('uses the same bottom-center scale as the viewport', () => {
+		const rasterizer = new ModelLayerMaskRasterizer(
+			modelFromPositions(boxPositions([1.5, 1.5, 0], [2.5, 2.5, 1])),
+			undefined,
+			undefined,
+			FOUR_BY_FOUR_PROFILE,
+			2
+		);
+
+		expect(rasterizer.layerCount).toBe(4);
+		expect(rasterizer.transformedBounds).toEqual({
+			min: { x: 1, y: 1, z: 0 },
+			max: { x: 3, y: 3, z: 2 }
+		});
+		expect(rows(rasterizer.createLayerMask(3).data, 4)).toEqual(['....', '.##.', '.##.', '....']);
+	});
+
 	it('uses the same quaternion rotation about the model center as the viewport', () => {
 		const halfTurn = Math.PI / 4;
 		const rasterizer = new ModelLayerMaskRasterizer(

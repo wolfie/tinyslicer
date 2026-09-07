@@ -1,5 +1,9 @@
 import type { RaftIsland } from '$lib/supports/raft-plan';
-import type { ModelRotation, ModelTranslation } from '$lib/workspace/build-volume-renderer/types';
+import type {
+	ModelRotation,
+	ModelScale,
+	ModelTranslation
+} from '$lib/workspace/build-volume-renderer/types';
 import type { Bounds3 } from '$lib/workspace/stl-importer';
 import type { SupportPlan } from '$lib/workspace/supports';
 
@@ -10,6 +14,7 @@ export type ExportSliceStartRequest = {
 	bounds: Bounds3;
 	translation: ModelTranslation;
 	rotation: ModelRotation;
+	scale: ModelScale;
 	supportPlan: SupportPlan;
 	raftIslands: readonly RaftIsland[];
 };

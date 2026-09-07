@@ -12,7 +12,10 @@ worker.onmessage = (event: MessageEvent<AutoSupportRequest>) => {
 			request.rotation,
 			(completed, total) => {
 				post({ type: 'progress', id: request.id, completed, total });
-			}
+			},
+			undefined,
+			undefined,
+			request.scale
 		);
 		post({ type: 'result', id: request.id, hits: [...hits], diagnostics });
 	} catch (error) {

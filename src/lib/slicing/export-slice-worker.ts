@@ -29,7 +29,10 @@ function start(request: ExportSliceStartRequest) {
 		request.translation,
 		request.rotation,
 		request.supportPlan,
-		request.raftIslands
+		request.raftIslands,
+		undefined,
+		undefined,
+		request.scale
 	);
 	active = { id: request.id, rasterizer, nextLayerIndex: 0, volumeCubicMm: 0, busy: false };
 	post({ type: 'started', id: request.id, totalLayers: rasterizer.layerCount });

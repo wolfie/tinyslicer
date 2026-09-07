@@ -1,4 +1,8 @@
-import type { ModelRotation, ModelTranslation } from '$lib/workspace/build-volume-renderer/types';
+import type {
+	ModelRotation,
+	ModelScale,
+	ModelTranslation
+} from '$lib/workspace/build-volume-renderer/types';
 import type { Bounds3 } from '$lib/workspace/stl-importer';
 import type { ModelSurfaceHit } from '$lib/workspace/supports';
 import type { AutoSupportDiagnostics } from './generate-auto-supports';
@@ -11,6 +15,7 @@ export type AutoSupportRequest = {
 	bounds: Bounds3;
 	translation: ModelTranslation;
 	rotation: ModelRotation;
+	scale: ModelScale;
 };
 
 export type AutoSupportProgressMessage = {

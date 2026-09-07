@@ -2,6 +2,7 @@ import { PerspectiveCamera, Plane, Quaternion, Raycaster, Vector2, Vector3 } fro
 
 import type { ModelSurfaceHit } from '../supports';
 import {
+	clampModelScale,
 	modelRotationQuaternion,
 	nudgeModelTranslation,
 	signedRotationAngle,
@@ -15,6 +16,7 @@ import type {
 	BuildVolumeInteractionMode,
 	ModelInteraction,
 	ModelRotation,
+	ModelScale,
 	ModelTranslation
 } from './types';
 
@@ -42,7 +44,45 @@ type ActiveRotationDrag = {
 	onInteractionChange: (interaction: ModelInteraction | null) => void;
 };
 
-type ActiveModelDrag = ActiveTranslationDrag | ActiveRotationDrag;
+type ActiveScaleDrag = {
+	kind: 'scale';
+	pointerId: number;
+	handleIndex: number;
+	anchor: Vector3;
+	handleVector: Vector3;
+	initialScale: ModelScale;
+	initialLineParameter: number;
+	onChange: (scale: ModelScale) => void;
+	onInteractionChange: (interaction: ModelInteraction | null) => void;
+};
+
+type ActiveModelDrag = ActiveTranslationDrag | ActiveRotationDrag | ActiveScaleDrag;
+
+export function scaleAlongRay(
+	rayOrigin: Vector3,
+	rayDirection: Vector3,
+	anchor: Vector3,
+	handleVector: Vector3,
+	initialScale: ModelScale,
+	initialLineParameter = 1
+): ModelScale {
+	const parameter = lineParameterAlongRay(rayOrigin, rayDirection, anchor, handleVector);
+	return clampModelScale(initialScale * (parameter / initialLineParameter));
+}
+
+function lineParameterAlongRay(
+	rayOrigin: Vector3,
+	rayDirection: Vector3,
+	anchor: Vector3,
+	handleVector: Vector3
+): number {
+	const offset = rayOrigin.clone().sub(anchor);
+	const rayDotHandle = rayDirection.dot(handleVector);
+	const handleLengthSquared = handleVector.lengthSq();
+	const denominator = handleLengthSquared - rayDotHandle * rayDotHandle;
+	if (denominator <= 1e-10) return 1;
+	return (handleVector.dot(offset) - rayDotHandle * rayDirection.dot(offset)) / denominator;
+}
 
 export class ModelInteractionController {
 	#canvas: HTMLCanvasElement;
@@ -73,6 +113,10 @@ export class ModelInteractionController {
 		return this.#activeDrag?.kind === 'rotation' ? this.#activeDrag.axis.axis : null;
 	}
 
+	get activeScaleHandle(): number | null {
+		return this.#activeDrag?.kind === 'scale' ? this.#activeDrag.handleIndex : null;
+	}
+
 	setInteractionMode(mode: BuildVolumeInteractionMode) {
 		if (mode === this.#interactionMode) return;
 		this.#interactionMode = mode;
@@ -83,8 +127,10 @@ export class ModelInteractionController {
 		event: PointerEvent,
 		translation: ModelTranslation,
 		rotation: ModelRotation,
+		scale: ModelScale,
 		onTranslationChange: (translation: ModelTranslation) => void,
 		onRotationChange: (rotation: ModelRotation) => void,
+		onScaleChange: (scale: ModelScale) => void,
 		onInteractionChange: (interaction: ModelInteraction | null) => void
 	): boolean {
 		const modelMesh = this.#model.mesh;
@@ -92,6 +138,35 @@ export class ModelInteractionController {
 			return false;
 		}
 		this.#setPointer(event);
+		const scaleHit = this.#raycaster.intersectObjects(this.#gizmo.scaleHitTargets, false)[0];
+		if (scaleHit) {
+			event.preventDefault();
+			this.#canvas.setPointerCapture(event.pointerId);
+			const handleIndex = scaleHit.object.userData.scaleHandleIndex as number;
+			const anchor = this.#gizmo.scaleAnchor.clone();
+			const handleVector = scaleHit.object.position.clone().sub(anchor);
+			this.#activeDrag = {
+				kind: 'scale',
+				pointerId: event.pointerId,
+				handleIndex,
+				anchor,
+				handleVector,
+				initialScale: scale,
+				initialLineParameter: Math.max(
+					0.01,
+					lineParameterAlongRay(
+						this.#raycaster.ray.origin,
+						this.#raycaster.ray.direction,
+						anchor,
+						handleVector
+					)
+				),
+				onChange: onScaleChange,
+				onInteractionChange
+			};
+			onInteractionChange({ kind: 'scale' });
+			return true;
+		}
 
 		const ringHit = this.#raycaster.intersectObjects(this.#gizmo.rotationHitTargets, false)[0];
 		if (ringHit) {
@@ -175,6 +250,20 @@ export class ModelInteractionController {
 	updateModelInteraction(event: PointerEvent): boolean {
 		const drag = this.#activeDrag;
 		if (!drag || drag.pointerId !== event.pointerId) return false;
+		if (drag.kind === 'scale') {
+			this.#setPointer(event);
+			drag.onChange(
+				scaleAlongRay(
+					this.#raycaster.ray.origin,
+					this.#raycaster.ray.direction,
+					drag.anchor,
+					drag.handleVector,
+					drag.initialScale,
+					drag.initialLineParameter
+				)
+			);
+			return true;
+		}
 		if (drag.kind === 'rotation') {
 			this.#setPointer(event);
 			const point = this.#raycaster.ray.intersectPlane(drag.plane, new Vector3());

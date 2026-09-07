@@ -1,9 +1,14 @@
 import { raftCrossSectionAtZ, type RaftIsland } from '$lib/supports/raft-plan';
 import {
+	DEFAULT_MODEL_SCALE,
 	IDENTITY_MODEL_ROTATION,
 	ZERO_MODEL_TRANSLATION
 } from '$lib/workspace/build-volume-renderer/model-transform';
-import type { ModelRotation, ModelTranslation } from '$lib/workspace/build-volume-renderer/types';
+import type {
+	ModelRotation,
+	ModelScale,
+	ModelTranslation
+} from '$lib/workspace/build-volume-renderer/types';
 import type { ImportedStlModel } from '$lib/workspace/stl-importer';
 import type { SupportPlan } from '$lib/workspace/supports';
 import {
@@ -61,7 +66,8 @@ export class LayerCoverageRasterizer {
 		supportPlan: SupportPlan = EMPTY_SUPPORT_PLAN,
 		raftIslands: readonly RaftIsland[] = [],
 		profile: LayerMaskRasterizationProfile = TINYMAKER_LAYER_MASK_PROFILE,
-		supersample: number = PREVIEW_SUPERSAMPLE
+		supersample: number = PREVIEW_SUPERSAMPLE,
+		scale: ModelScale = DEFAULT_MODEL_SCALE
 	) {
 		if (!Number.isInteger(supersample) || supersample < 1) {
 			throw new Error('supersample must be a positive integer.');
@@ -71,14 +77,20 @@ export class LayerCoverageRasterizer {
 		this.height = profile.resolution.y;
 		this.#plan = supportPlan;
 		this.#raftIslands = raftIslands;
-		this.#inner = new ModelLayerMaskRasterizer(model, translation, rotation, {
-			resolution: {
-				x: profile.resolution.x * supersample,
-				y: profile.resolution.y * supersample
+		this.#inner = new ModelLayerMaskRasterizer(
+			model,
+			translation,
+			rotation,
+			{
+				resolution: {
+					x: profile.resolution.x * supersample,
+					y: profile.resolution.y * supersample
+				},
+				buildAreaMm: profile.buildAreaMm,
+				layerHeightMm: profile.layerHeightMm
 			},
-			buildAreaMm: profile.buildAreaMm,
-			layerHeightMm: profile.layerHeightMm
-		});
+			scale
+		);
 		this.pixelPitchMm = {
 			x: profile.buildAreaMm.x / this.width,
 			y: profile.buildAreaMm.y / this.height

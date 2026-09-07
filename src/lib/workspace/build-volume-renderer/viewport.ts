@@ -22,6 +22,7 @@ import type {
 	BuildVolumeRenderState,
 	ModelInteraction,
 	ModelRotation,
+	ModelScale,
 	ModelTranslation
 } from './types';
 
@@ -89,16 +90,20 @@ export class BuildVolumeViewport {
 		event: PointerEvent,
 		translation: ModelTranslation,
 		rotation: ModelRotation,
+		scale: ModelScale,
 		onTranslationChange: (translation: ModelTranslation) => void,
 		onRotationChange: (rotation: ModelRotation) => void,
+		onScaleChange: (scale: ModelScale) => void,
 		onInteractionChange: (interaction: ModelInteraction | null) => void
 	): boolean {
 		return this.#interactions.startModelInteraction(
 			event,
 			translation,
 			rotation,
+			scale,
 			onTranslationChange,
 			onRotationChange,
+			onScaleChange,
 			onInteractionChange
 		);
 	}
@@ -150,7 +155,7 @@ export class BuildVolumeViewport {
 		this.#resize(state.width, state.height, state.dpr);
 		const previewing = state.previewMesh !== null;
 		if (this.#model.setModel(state.model)) this.#interactions.cancel();
-		this.#model.setTransform(state.modelTranslation, state.modelRotation);
+		this.#model.setTransform(state.modelTranslation, state.modelRotation, state.modelScale);
 		this.#model.setSupportRiskVisible(state.interactionMode === 'place-supports');
 		this.#model.setVisible(!previewing);
 		this.#interactions.setInteractionMode(state.interactionMode);
@@ -176,11 +181,13 @@ export class BuildVolumeViewport {
 			model: state.model,
 			translation: state.modelTranslation,
 			rotation: state.modelRotation,
+			scale: state.modelScale,
 			interactionMode: state.interactionMode,
 			camera: this.#camera,
 			modelCenter: this.#model.worldCenter,
-			rotationRingRadius: this.#model.rotationRingRadius,
-			activeRotationAxis: this.#interactions.activeRotationAxis
+			rotationRingRadius: this.#model.rotationRingRadius * state.modelScale,
+			activeRotationAxis: this.#interactions.activeRotationAxis,
+			activeScaleHandle: this.#interactions.activeScaleHandle
 		});
 		this.#renderer.render(this.#scene, this.#camera);
 	}

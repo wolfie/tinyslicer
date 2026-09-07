@@ -13,6 +13,7 @@
 		type BuildVolumeInteractionMode,
 		type ModelInteraction,
 		type ModelRotation,
+		type ModelScale,
 		type ModelTranslation
 	} from './build-volume-renderer';
 	import { CanvasMetrics } from './canvas-metrics.svelte';
@@ -27,6 +28,7 @@
 		model: ImportedStlModel | null;
 		modelTranslation: ModelTranslation;
 		modelRotation: ModelRotation;
+		modelScale?: ModelScale;
 		transformedModelBounds: Bounds3 | null;
 		modelOutsideBuildVolume: boolean;
 		modelOverlapsSupportMargin: boolean;
@@ -47,6 +49,7 @@
 		previewError: string | null;
 		onTranslationChange: (translation: ModelTranslation) => void;
 		onRotationChange: (rotation: ModelRotation) => void;
+		onScaleChange?: (scale: ModelScale) => void;
 		onSupportPointPlaced: (hit: ModelSurfaceHit) => void;
 		onEnterSupports: () => void;
 		onEnterPreview: () => void;
@@ -59,6 +62,7 @@
 		model,
 		modelTranslation,
 		modelRotation,
+		modelScale = 1,
 		transformedModelBounds,
 		modelOutsideBuildVolume,
 		modelOverlapsSupportMargin,
@@ -79,6 +83,7 @@
 		previewError,
 		onTranslationChange,
 		onRotationChange,
+		onScaleChange = () => {},
 		onSupportPointPlaced,
 		onEnterSupports,
 		onEnterPreview,
@@ -145,8 +150,10 @@
 				event,
 				modelTranslation,
 				modelRotation,
+				modelScale,
 				onTranslationChange,
 				onRotationChange,
+				onScaleChange,
 				(interaction) => {
 					modelInteraction = interaction;
 				}
@@ -213,6 +220,7 @@
 				model,
 				modelTranslation,
 				modelRotation,
+				modelScale,
 				interactionMode,
 				supportPoints,
 				supportStructures,
@@ -224,7 +232,7 @@
 			onpointerup={handlePointerEnd}
 			onpointercancel={handlePointerEnd}
 			onauxclick={(event) => event.preventDefault()}
-			aria-label={`Interactive 3D view of the ${TINYMAKER_PROFILE.buildVolume.x} by ${TINYMAKER_PROFILE.buildVolume.y} by ${TINYMAKER_PROFILE.buildVolume.z} millimetre ${TINYMAKER_PROFILE.name} build volume${model ? ` containing ${model.name}` : ''}. ${placingSupports ? 'Click the model to place a support point. ' : model ? `Drag the model to move it, click an arrow to nudge it, or drag a colored ring to rotate it in ${ROTATION_SNAP_DEGREES} degree steps. ` : ''}Drag with the middle mouse button to orbit.`}
+			aria-label={`Interactive 3D view of the ${TINYMAKER_PROFILE.buildVolume.x} by ${TINYMAKER_PROFILE.buildVolume.y} by ${TINYMAKER_PROFILE.buildVolume.z} millimetre ${TINYMAKER_PROFILE.name} build volume${model ? ` containing ${model.name}` : ''}. ${placingSupports ? 'Click the model to place a support point. ' : model ? `Drag the model to move it, drag an upper corner to scale it, click an arrow to nudge it, or drag a colored ring to rotate it in ${ROTATION_SNAP_DEGREES} degree steps. ` : ''}Drag with the middle mouse button to orbit.`}
 		></canvas>
 		<div class="absolute top-4 left-4 flex gap-2" aria-label="Axis directions">
 			<span
@@ -292,17 +300,19 @@
 					? `Rotating ${modelInteraction.axis.toUpperCase()} · ${ROTATION_SNAP_DEGREES}° snap · Hold Shift for free`
 					: modelInteraction?.kind === 'translation'
 						? 'Moving model'
-						: camera.orbiting
-							? 'Orbiting view'
-							: previewing
-								? 'Preview is read-only · Drag to orbit'
-								: generatingSupports
-									? 'Generating initial supports · Middle-drag to orbit'
-									: placingSupports
-										? 'Click model to place · Middle-drag to orbit'
-										: model
-											? `Drag rings to rotate · ${ROTATION_SNAP_DEGREES}° snap · Shift for free`
-											: 'Middle-drag to orbit'}
+						: modelInteraction?.kind === 'scale'
+							? `Scaling model · ${Math.round(modelScale * 100)}%`
+							: camera.orbiting
+								? 'Orbiting view'
+								: previewing
+									? 'Preview is read-only · Drag to orbit'
+									: generatingSupports
+										? 'Generating initial supports · Middle-drag to orbit'
+										: placingSupports
+											? 'Click model to place · Middle-drag to orbit'
+											: model
+												? `Drag upper corners to scale · Rings rotate in ${ROTATION_SNAP_DEGREES}° steps`
+												: 'Middle-drag to orbit'}
 			</span>
 		</div>
 		{#if modelOutsideBuildVolume || (interactionMode === 'transform-model' && canEnterSupports)}

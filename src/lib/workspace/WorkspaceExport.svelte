@@ -27,6 +27,7 @@
 			model: scene.model,
 			translation: scene.translation,
 			rotation: scene.rotation,
+			scale: scene.scale,
 			supportPlan: supports.plan,
 			raftIslands: supports.raftPlan.islands,
 			previewMesh: preview.mesh

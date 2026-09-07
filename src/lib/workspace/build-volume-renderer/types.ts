@@ -11,8 +11,10 @@ export type ModelRotation = {
 	w: number;
 };
 
+export type ModelScale = number;
+
 export type ModelInteraction =
-	{ kind: 'translation' } | { kind: 'rotation'; axis: keyof ModelTranslation };
+	{ kind: 'translation' } | { kind: 'rotation'; axis: keyof ModelTranslation } | { kind: 'scale' };
 
 export type BuildVolumeInteractionMode = 'transform-model' | 'place-supports' | 'readonly';
 
@@ -25,6 +27,7 @@ export type BuildVolumeRenderState = {
 	model: ImportedStlModel | null;
 	modelTranslation: ModelTranslation;
 	modelRotation: ModelRotation;
+	modelScale: ModelScale;
 	interactionMode: BuildVolumeInteractionMode;
 	supportPoints: readonly SupportPoint[];
 	supportStructures: readonly SupportStructure[];

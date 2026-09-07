@@ -11,6 +11,7 @@ worker.onmessage = (event: MessageEvent<PreviewMeshRequest>) => {
 				model: { positions: request.positions, bounds: request.bounds },
 				translation: request.translation,
 				rotation: request.rotation,
+				scale: request.scale,
 				supportPlan: request.supportPlan,
 				raftIslands: request.raftIslands
 			},

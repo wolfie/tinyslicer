@@ -4,20 +4,29 @@ import {
 	CylinderGeometry,
 	DoubleSide,
 	Group,
+	LineBasicMaterial,
+	LineSegments,
 	Material,
 	Mesh,
 	MeshBasicMaterial,
 	PerspectiveCamera,
 	PlaneGeometry,
+	Quaternion,
 	RingGeometry,
 	Scene,
+	SphereGeometry,
 	SRGBColorSpace,
 	Vector3
 } from 'three';
 
 import type { ImportedStlModel } from '../stl-importer';
-import { transformModelBounds } from './model-transform';
-import type { BuildVolumeInteractionMode, ModelRotation, ModelTranslation } from './types';
+import { transformModelBounds, transformModelPoint } from './model-transform';
+import type {
+	BuildVolumeInteractionMode,
+	ModelRotation,
+	ModelScale,
+	ModelTranslation
+} from './types';
 
 const ARROW_OUTSET = 3;
 const ARROW_LENGTH = 10;
@@ -29,6 +38,21 @@ const ARROW_CROSSFADE_END = Math.PI / 3;
 const ROTATION_RING_INNER_RADIUS = 0.972;
 const ROTATION_RING_OUTER_RADIUS = 1;
 const ROTATION_RING_SEGMENTS = 96;
+const SCALE_HANDLE_RADIUS = 0.8;
+const BOX_EDGES: readonly [number, number][] = [
+	[0, 1],
+	[0, 2],
+	[0, 4],
+	[1, 3],
+	[1, 5],
+	[2, 3],
+	[2, 6],
+	[3, 7],
+	[4, 5],
+	[4, 6],
+	[5, 7],
+	[6, 7]
+];
 
 export type TranslationDirection = {
 	axis: keyof ModelTranslation;
@@ -101,11 +125,33 @@ export function createRotationRingGeometry(): CylinderGeometry {
 export class TransformGizmo {
 	readonly translationHitTargets: TranslationArrowPlane[] = [];
 	readonly rotationHitTargets: Mesh<RingGeometry, MeshBasicMaterial>[] = [];
+	readonly scaleHitTargets: Mesh<SphereGeometry, MeshBasicMaterial>[] = [];
+	readonly scaleAnchor = new Vector3();
 
 	#scene: Scene;
 	#group = new Group();
 	#translationArrows: TranslationArrow[] = [];
 	#rotationRings: RotationRing[] = [];
+	#scaleBoxGroup = new Group();
+	#scaleBoxGeometry = new BufferGeometry();
+	#scaleBoxMaterial = new LineBasicMaterial({
+		color: 0x9bccec,
+		transparent: true,
+		opacity: 0.28,
+		depthTest: false,
+		depthWrite: false
+	});
+	#scaleBox = new LineSegments(this.#scaleBoxGeometry, this.#scaleBoxMaterial);
+	#scaleGuideGeometry = new BufferGeometry();
+	#scaleGuideMaterial = new LineBasicMaterial({
+		color: 0xd8efff,
+		transparent: true,
+		opacity: 0.5,
+		depthTest: false,
+		depthWrite: false
+	});
+	#scaleGuide = new LineSegments(this.#scaleGuideGeometry, this.#scaleGuideMaterial);
+	#scaleModel: ImportedStlModel | null = null;
 	#arrowGeometry = new PlaneGeometry(ARROW_LENGTH, ARROW_WIDTH);
 	#arrowTexture: CanvasTexture;
 
@@ -114,6 +160,7 @@ export class TransformGizmo {
 		this.#arrowTexture = this.#createArrowTexture();
 		this.#createTranslationArrows();
 		this.#createRotationRings();
+		this.#createScaleBox();
 		this.#scene.add(this.#group);
 	}
 
@@ -125,19 +172,25 @@ export class TransformGizmo {
 		model: ImportedStlModel | null;
 		translation: ModelTranslation;
 		rotation: ModelRotation;
+		scale: ModelScale;
 		interactionMode: BuildVolumeInteractionMode;
 		camera: PerspectiveCamera;
 		modelCenter: Vector3;
 		rotationRingRadius: number;
 		activeRotationAxis: keyof ModelTranslation | null;
+		activeScaleHandle: number | null;
 	}) {
 		this.#updateTranslationArrows(options);
 		this.#updateRotationRings(options);
+		this.#updateScaleBox(options);
 	}
 
 	hide() {
 		for (const arrow of this.#translationArrows) arrow.group.visible = false;
 		for (const ring of this.#rotationRings) ring.group.visible = false;
+		this.#scaleBoxGroup.visible = false;
+		for (const handle of this.scaleHitTargets) handle.visible = false;
+		this.#scaleGuide.visible = false;
 	}
 
 	dispose() {
@@ -152,8 +205,129 @@ export class TransformGizmo {
 		for (const geometry of geometries) geometry.dispose();
 		for (const material of materials) material.dispose();
 		this.#arrowTexture.dispose();
+		this.#scaleBoxGeometry.dispose();
+		this.#scaleBoxMaterial.dispose();
+		this.#scaleGuideGeometry.dispose();
+		this.#scaleGuideMaterial.dispose();
 		this.#scene.remove(this.#group);
 		this.#group.clear();
+	}
+
+	#createScaleBox() {
+		this.#scaleBox.renderOrder = 8;
+		this.#scaleGuide.renderOrder = 12;
+		this.#scaleGuide.visible = false;
+		this.#scaleBoxGroup.add(this.#scaleBox);
+		this.#group.add(this.#scaleBoxGroup, this.#scaleGuide);
+
+		for (let index = 0; index < 4; index += 1) {
+			const material = new MeshBasicMaterial({
+				color: 0xd8efff,
+				transparent: true,
+				opacity: 0.8,
+				depthTest: false,
+				depthWrite: false
+			});
+			const handle = new Mesh(new SphereGeometry(SCALE_HANDLE_RADIUS, 16, 10), material);
+			handle.userData.scaleHandleIndex = index;
+			handle.renderOrder = 12;
+			handle.visible = false;
+			this.scaleHitTargets.push(handle);
+			this.#group.add(handle);
+		}
+	}
+
+	#refreshScaleBoxGeometry(model: ImportedStlModel) {
+		if (model === this.#scaleModel) return;
+		this.#scaleModel = model;
+		const center = new Vector3(
+			(model.bounds.min.x + model.bounds.max.x) / 2,
+			(model.bounds.min.y + model.bounds.max.y) / 2,
+			(model.bounds.min.z + model.bounds.max.z) / 2
+		);
+		const corners: Vector3[] = [];
+		for (const z of [model.bounds.min.z, model.bounds.max.z]) {
+			for (const y of [model.bounds.min.y, model.bounds.max.y]) {
+				for (const x of [model.bounds.min.x, model.bounds.max.x]) {
+					corners.push(new Vector3(x, y, z).sub(center));
+				}
+			}
+		}
+		const vertices: Vector3[] = [];
+		for (const [from, to] of BOX_EDGES) vertices.push(corners[from], corners[to]);
+		this.#scaleBoxGeometry.setFromPoints(vertices);
+		this.#scaleBoxGeometry.computeBoundingSphere();
+	}
+
+	#updateScaleBox(options: {
+		model: ImportedStlModel | null;
+		translation: ModelTranslation;
+		rotation: ModelRotation;
+		scale: ModelScale;
+		interactionMode: BuildVolumeInteractionMode;
+		modelCenter: Vector3;
+		activeScaleHandle: number | null;
+	}) {
+		if (!options.model || options.interactionMode !== 'transform-model') {
+			this.#scaleBoxGroup.visible = false;
+			for (const handle of this.scaleHitTargets) handle.visible = false;
+			this.#scaleGuide.visible = false;
+			return;
+		}
+		this.#refreshScaleBoxGeometry(options.model);
+		this.#scaleBoxGroup.position.copy(options.modelCenter);
+		this.#scaleBoxGroup.quaternion.copy(
+			new Quaternion(
+				options.rotation.x,
+				options.rotation.y,
+				options.rotation.z,
+				options.rotation.w
+			).normalize()
+		);
+		this.#scaleBoxGroup.scale.setScalar(options.scale);
+		this.#scaleBoxGroup.visible = true;
+
+		this.scaleAnchor.set(
+			(options.model.bounds.min.x + options.model.bounds.max.x) / 2 + options.translation.x,
+			(options.model.bounds.min.y + options.model.bounds.max.y) / 2 + options.translation.y,
+			options.model.bounds.min.z + options.translation.z
+		);
+		const signs: readonly [number, number][] = [
+			[-1, -1],
+			[1, -1],
+			[-1, 1],
+			[1, 1]
+		];
+		for (let index = 0; index < this.scaleHitTargets.length; index += 1) {
+			const [xSign, ySign] = signs[index];
+			const handle = this.scaleHitTargets[index];
+			handle.position.copy(
+				transformModelPoint(
+					{
+						x: xSign < 0 ? options.model.bounds.min.x : options.model.bounds.max.x,
+						y: ySign < 0 ? options.model.bounds.min.y : options.model.bounds.max.y,
+						z: options.model.bounds.max.z
+					},
+					options.model.bounds,
+					options.translation,
+					options.rotation,
+					options.scale
+				)
+			);
+			handle.visible = true;
+			handle.material.opacity = options.activeScaleHandle === index ? 1 : 0.72;
+		}
+
+		if (options.activeScaleHandle === null) {
+			this.#scaleGuide.visible = false;
+		} else {
+			this.#scaleGuideGeometry.setFromPoints([
+				this.scaleAnchor,
+				this.scaleHitTargets[options.activeScaleHandle].position
+			]);
+			this.#scaleGuideGeometry.computeBoundingSphere();
+			this.#scaleGuide.visible = true;
+		}
 	}
 
 	#createArrowTexture(): CanvasTexture {
@@ -259,6 +433,7 @@ export class TransformGizmo {
 		model: ImportedStlModel | null;
 		translation: ModelTranslation;
 		rotation: ModelRotation;
+		scale: ModelScale;
 		interactionMode: BuildVolumeInteractionMode;
 		camera: PerspectiveCamera;
 	}) {
@@ -269,7 +444,8 @@ export class TransformGizmo {
 		const bounds = transformModelBounds(
 			options.model.bounds,
 			options.translation,
-			options.rotation
+			options.rotation,
+			options.scale
 		);
 		const center = new Vector3(
 			(bounds.min.x + bounds.max.x) / 2,

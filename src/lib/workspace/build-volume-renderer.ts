@@ -3,6 +3,7 @@ import type {
 	BuildVolumeRenderState,
 	ModelInteraction,
 	ModelRotation,
+	ModelScale,
 	ModelTranslation
 } from './build-volume-renderer/types';
 import { BuildVolumeViewport } from './build-volume-renderer/viewport';
@@ -13,16 +14,21 @@ export {
 } from './build-volume-renderer/build-volume-scene';
 export {
 	areBoundsOutsideBuildVolume,
+	clampModelScale,
+	createModelPointTransformer,
+	DEFAULT_MODEL_SCALE,
 	firstBuildVolumeOverflowDirection,
 	IDENTITY_MODEL_ROTATION,
 	isModelOutsideBuildVolume,
 	modelRotationDegrees,
+	modelBottomCenter,
 	nudgeModelTranslation,
 	ROTATION_SNAP_DEGREES,
 	signedRotationAngle,
 	snapRotationAngle,
 	transformModelBounds,
 	transformModelGeometryBounds,
+	transformModelPoint,
 	translateModelBounds
 } from './build-volume-renderer/model-transform';
 export {
@@ -39,6 +45,7 @@ export type {
 	BuildVolumeRenderState,
 	ModelInteraction,
 	ModelRotation,
+	ModelScale,
 	ModelTranslation
 } from './build-volume-renderer/types';
 
@@ -70,16 +77,20 @@ export function startModelTransform(
 	event: PointerEvent,
 	translation: ModelTranslation,
 	rotation: ModelRotation,
+	scale: ModelScale,
 	onTranslationChange: (translation: ModelTranslation) => void,
 	onRotationChange: (rotation: ModelRotation) => void,
+	onScaleChange: (scale: ModelScale) => void,
 	onInteractionChange: (interaction: ModelInteraction | null) => void
 ): boolean {
 	return getViewport(event.currentTarget as HTMLCanvasElement).startModelInteraction(
 		event,
 		translation,
 		rotation,
+		scale,
 		onTranslationChange,
 		onRotationChange,
+		onScaleChange,
 		onInteractionChange
 	);
 }

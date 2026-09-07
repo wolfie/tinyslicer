@@ -136,6 +136,7 @@
 				model={workspace.scene.model}
 				modelTranslation={workspace.scene.translation}
 				modelRotation={workspace.scene.rotation}
+				modelScale={workspace.scene.scale}
 				transformedModelBounds={workspace.scene.transformedBounds}
 				modelOutsideBuildVolume={workspace.scene.outsideBuildVolume}
 				modelOverlapsSupportMargin={workspace.scene.overlapsSupportMargin}
@@ -156,6 +157,7 @@
 				previewError={workspace.preview.error}
 				onTranslationChange={workspace.scene.setTranslation}
 				onRotationChange={workspace.scene.setRotation}
+				onScaleChange={workspace.scene.setScale}
 				onSupportPointPlaced={(hit) => workspace.workflow.placeSupport(hit)}
 				onEnterSupports={() => requestStep('supports')}
 				onEnterPreview={() => requestStep('preview')}

@@ -4,12 +4,17 @@ import { TINYMAKER_PROFILE } from '$lib/printer/tinymaker';
 import type { BinaryLayerMask } from '$lib/supports/detect-unsupported';
 import type { ImportedStlModel } from '$lib/workspace/stl-importer';
 import {
+	DEFAULT_MODEL_SCALE,
+	createModelPointTransformer,
 	IDENTITY_MODEL_ROTATION,
-	modelRotationQuaternion,
 	transformModelGeometryBounds,
 	ZERO_MODEL_TRANSLATION
 } from '$lib/workspace/build-volume-renderer/model-transform';
-import type { ModelRotation, ModelTranslation } from '$lib/workspace/build-volume-renderer/types';
+import type {
+	ModelRotation,
+	ModelScale,
+	ModelTranslation
+} from '$lib/workspace/build-volume-renderer/types';
 
 export type LayerMaskRasterizationProfile = {
 	resolution: { x: number; y: number };
@@ -146,7 +151,8 @@ export class ModelLayerMaskRasterizer {
 		model: Pick<ImportedStlModel, 'positions' | 'bounds'>,
 		translation: ModelTranslation = ZERO_MODEL_TRANSLATION,
 		rotation: ModelRotation = IDENTITY_MODEL_ROTATION,
-		profile: LayerMaskRasterizationProfile = TINYMAKER_LAYER_MASK_PROFILE
+		profile: LayerMaskRasterizationProfile = TINYMAKER_LAYER_MASK_PROFILE,
+		scale: ModelScale = DEFAULT_MODEL_SCALE
 	) {
 		assertProfile(profile);
 		if (model.positions.length === 0 || model.positions.length % 9 !== 0) {
@@ -160,20 +166,15 @@ export class ModelLayerMaskRasterizer {
 			y: profile.buildAreaMm.y / this.height
 		};
 		this.layerHeightMm = profile.layerHeightMm;
-		this.transformedBounds = transformModelGeometryBounds(model, translation, rotation);
+		this.transformedBounds = transformModelGeometryBounds(model, translation, rotation, scale);
 		this.layerCount = Math.max(
 			0,
 			Math.ceil(this.transformedBounds.max.z / this.layerHeightMm - LAYER_COUNT_EPSILON)
 		);
 
 		const rawCrossings: (OrientedCrossing[] | undefined)[] = new Array(this.width * this.height);
-		const center = new Vector3(
-			(model.bounds.min.x + model.bounds.max.x) / 2,
-			(model.bounds.min.y + model.bounds.max.y) / 2,
-			(model.bounds.min.z + model.bounds.max.z) / 2
-		);
-		const quaternion = modelRotationQuaternion(rotation);
 		const transformed = new Vector3();
+		const transformPoint = createModelPointTransformer(model.bounds, translation, rotation, scale);
 		const vertices: ProjectedVertex[] = new Array(3);
 		let projectedTriangleCount = 0;
 		let verticalTriangleCount = 0;
@@ -181,18 +182,16 @@ export class ModelLayerMaskRasterizer {
 		for (let triangleOffset = 0; triangleOffset < model.positions.length; triangleOffset += 9) {
 			for (let vertexIndex = 0; vertexIndex < 3; vertexIndex += 1) {
 				const offset = triangleOffset + vertexIndex * 3;
-				transformed
-					.set(
-						model.positions[offset] - center.x,
-						model.positions[offset + 1] - center.y,
-						model.positions[offset + 2] - center.z
-					)
-					.applyQuaternion(quaternion)
-					.add(center);
+				transformPoint(
+					model.positions[offset],
+					model.positions[offset + 1],
+					model.positions[offset + 2],
+					transformed
+				);
 				vertices[vertexIndex] = {
-					x: transformed.x + translation.x,
-					y: transformed.y + translation.y,
-					z: transformed.z + translation.z
+					x: transformed.x,
+					y: transformed.y,
+					z: transformed.z
 				};
 			}
 
@@ -350,7 +349,14 @@ export class ModelLayerMaskRasterizer {
 export function createTinyMakerLayerMaskRasterizer(
 	model: Pick<ImportedStlModel, 'positions' | 'bounds'>,
 	translation: ModelTranslation = ZERO_MODEL_TRANSLATION,
-	rotation: ModelRotation = IDENTITY_MODEL_ROTATION
+	rotation: ModelRotation = IDENTITY_MODEL_ROTATION,
+	scale: ModelScale = DEFAULT_MODEL_SCALE
 ): ModelLayerMaskRasterizer {
-	return new ModelLayerMaskRasterizer(model, translation, rotation, TINYMAKER_LAYER_MASK_PROFILE);
+	return new ModelLayerMaskRasterizer(
+		model,
+		translation,
+		rotation,
+		TINYMAKER_LAYER_MASK_PROFILE,
+		scale
+	);
 }

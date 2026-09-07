@@ -14,6 +14,7 @@ import {
 	snapRotationAngle,
 	transformModelBounds,
 	transformModelGeometryBounds,
+	transformModelPoint,
 	translateModelBounds
 } from './model-transform';
 
@@ -182,6 +183,33 @@ describe('build volume fit', () => {
 		expect(bounds.max.y).toBeCloseTo(10);
 		expect(bounds.min.z).toBeCloseTo(1);
 		expect(bounds.max.z).toBeCloseTo(5);
+	});
+
+	it('scales uniformly while keeping the oriented bottom-center fixed', () => {
+		const bounds = { min: { x: 10, y: 8, z: 0 }, max: { x: 14, y: 14, z: 6 } };
+		const bottomCenter = { x: 12, y: 11, z: 0 };
+
+		expect(transformModelBounds(bounds, undefined, undefined, 2)).toEqual({
+			min: { x: 8, y: 5, z: 0 },
+			max: { x: 16, y: 17, z: 12 }
+		});
+		expect(transformModelPoint(bottomCenter, bounds, undefined, undefined, 2).toArray()).toEqual([
+			12, 11, 0
+		]);
+	});
+
+	it('moves the center of rotation with the scale transformation', () => {
+		const bounds = { min: { x: 10, y: 8, z: 0 }, max: { x: 14, y: 14, z: 6 } };
+		const center = { x: 12, y: 11, z: 3 };
+		const rotation = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), Math.PI / 4);
+
+		const before = transformModelPoint(center, bounds, undefined, rotation, 1);
+		const after = transformModelPoint(center, bounds, undefined, rotation, 3);
+		const afterWithoutRotation = transformModelPoint(center, bounds, undefined, undefined, 3);
+
+		expect(before.toArray()).toEqual([12, 11, 3]);
+		expect(after.toArray()).toEqual([12, 11, 9]);
+		expect(after.distanceTo(afterWithoutRotation)).toBeLessThan(1e-9);
 	});
 
 	it('uses the rotated bounds for build-volume feedback', () => {

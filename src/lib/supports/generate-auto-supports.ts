@@ -3,7 +3,11 @@ import {
 	ModelLayerMaskRasterizer,
 	TINYMAKER_LAYER_MASK_PROFILE
 } from '$lib/slicing/model-layer-masks';
-import type { ModelRotation, ModelTranslation } from '$lib/workspace/build-volume-renderer/types';
+import type {
+	ModelRotation,
+	ModelScale,
+	ModelTranslation
+} from '$lib/workspace/build-volume-renderer/types';
 import type { ImportedStlModel } from '$lib/workspace/stl-importer';
 import { createPostSupportStructure, type ModelSurfaceHit } from '$lib/workspace/supports';
 import {
@@ -133,10 +137,11 @@ export function generateAutoSupportHits(
 	rotation: ModelRotation,
 	onProgress?: AutoSupportProgress,
 	settings: AutoSupportSettings = DEFAULT_AUTO_SUPPORT_SETTINGS,
-	profile: LayerMaskRasterizationProfile = TINYMAKER_LAYER_MASK_PROFILE
+	profile: LayerMaskRasterizationProfile = TINYMAKER_LAYER_MASK_PROFILE,
+	scale: ModelScale = 1
 ): AutoSupportResult {
 	assertAutoSupportSettings(settings);
-	const rasterizer = new ModelLayerMaskRasterizer(model, translation, rotation, profile);
+	const rasterizer = new ModelLayerMaskRasterizer(model, translation, rotation, profile, scale);
 	const diagnostics: AutoSupportDiagnostics = {
 		meshIsWatertightAtPixelSamples: rasterizer.diagnostics.oddIntersectionPixelCount === 0,
 		oddIntersectionPixelCount: rasterizer.diagnostics.oddIntersectionPixelCount,

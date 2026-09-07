@@ -1,6 +1,10 @@
 import type { RaftIsland } from '$lib/supports/raft-plan';
 import type { Bounds3 } from '$lib/workspace/stl-importer';
-import type { ModelRotation, ModelTranslation } from '$lib/workspace/build-volume-renderer/types';
+import type {
+	ModelRotation,
+	ModelScale,
+	ModelTranslation
+} from '$lib/workspace/build-volume-renderer/types';
 import type { SupportPlan } from '$lib/workspace/supports';
 
 /** Posted to the worker to start (or supersede) a preview build. `positions` is
@@ -11,6 +15,7 @@ export type PreviewMeshRequest = {
 	bounds: Bounds3;
 	translation: ModelTranslation;
 	rotation: ModelRotation;
+	scale: ModelScale;
 	supportPlan: SupportPlan;
 	raftIslands: readonly RaftIsland[];
 };
