@@ -9,7 +9,9 @@ import type { SupportPlan } from '$lib/workspace/supports';
 
 /** Posted to the worker to start (or supersede) a preview build. `positions` is
  *  transferred, so the caller must hand over a copy it no longer needs. */
-export type PreviewMeshRequest = {
+
+export type PreviewMeshBuildRequest = {
+	type: 'build';
 	id: number;
 	positions: Float32Array;
 	bounds: Bounds3;
@@ -19,6 +21,24 @@ export type PreviewMeshRequest = {
 	supportPlan: SupportPlan;
 	raftIslands: readonly RaftIsland[];
 };
+
+export type PreviewMeshExportStartRequest = { type: 'export-start'; id: number; exportId: number };
+export type PreviewMeshExportContinueRequest = {
+	type: 'export-continue';
+	id: number;
+	exportId: number;
+};
+export type PreviewMeshExportCancelRequest = {
+	type: 'export-cancel';
+	id: number;
+	exportId: number;
+};
+
+export type PreviewMeshWorkerRequest =
+	| PreviewMeshBuildRequest
+	| PreviewMeshExportStartRequest
+	| PreviewMeshExportContinueRequest
+	| PreviewMeshExportCancelRequest;
 
 export type PreviewMeshProgressMessage = {
 	type: 'progress';
@@ -44,5 +64,27 @@ export type PreviewMeshErrorMessage = {
 	message: string;
 };
 
+export type PreviewMeshExportMessage =
+	| { type: 'export-started'; id: number; exportId: number; totalLayers: number }
+	| {
+			type: 'export-layer';
+			id: number;
+			exportId: number;
+			layerNumber: number;
+			totalLayers: number;
+			png: ArrayBuffer;
+	  }
+	| {
+			type: 'export-complete';
+			id: number;
+			exportId: number;
+			totalLayers: number;
+			volumeCubicMm: number;
+	  }
+	| { type: 'export-error'; id: number; exportId: number; message: string };
+
 export type PreviewMeshWorkerMessage =
-	PreviewMeshProgressMessage | PreviewMeshResultMessage | PreviewMeshErrorMessage;
+	| PreviewMeshProgressMessage
+	| PreviewMeshResultMessage
+	| PreviewMeshErrorMessage
+	| PreviewMeshExportMessage;

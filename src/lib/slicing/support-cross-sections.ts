@@ -4,7 +4,7 @@ import type { SupportPlan, SupportStructurePart } from '$lib/workspace/supports'
  * A single support part reduced to its footprint on one horizontal slicing plane.
  * The spec (sections 6 and 7.2) permits compositing support cross-sections into the
  * layer mask instead of running a 3D boolean union with the model, so the preview
- * and the future PNG export both slice supports this way.
+ * and the cached PNG export both slice supports this way.
  */
 export type SupportCrossSectionCircle = {
 	xMm: number;

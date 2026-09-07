@@ -23,8 +23,8 @@ import { supportPlanCirclesAtZ } from './support-cross-sections';
  * rasterized at `PREVIEW_SUPERSAMPLE` times the printer resolution and then box
  * downsampled, giving `PREVIEW_SUPERSAMPLE^2 + 1` coverage levels per pixel. This
  * is the deterministic supersample/downsample anti-aliasing the spec (section
- * 8.3) calls for, so the preview and the future PNG export share this module and
- * produce identical pixels.
+ * 8.3) calls for. The preview build retains the resulting printer pixels so PNG
+ * export can reuse them without rasterizing the scene again.
  */
 export const PREVIEW_SUPERSAMPLE = 4;
 

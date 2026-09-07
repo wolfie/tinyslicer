@@ -105,8 +105,9 @@ export class WorkflowState {
 		this.#setStep('prepare');
 	};
 
-	/** Wired by the composition root to fire once an auto-support draft lands. */
+	/** Wired by the composition root whenever manual or automatic supports change. */
 	onSupportSetChanged() {
+		this.#preview.reset();
 		if (this.step === 'preview') this.#requestPreview();
 	}
 

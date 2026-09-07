@@ -148,6 +148,8 @@ describe('buildPreviewMesh', () => {
 		expect(result.triangleCount).toBeGreaterThan(0);
 		expect(result.meshIsWatertightAtPixelSamples).toBe(true);
 		expect(result.normals.length).toBe(result.positions.length);
+		expect(result.layerPixels).toHaveLength(PROFILE.resolution.x * PROFILE.resolution.y * 6);
+		expect(result.volumeCubicMm).toBeCloseTo(8 * 8 * 3, 5);
 
 		const bounds = meshBounds(result.positions);
 		expect(bounds.min.z).toBeCloseTo(0, 5);

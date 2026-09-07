@@ -26,6 +26,11 @@ export type PreviewMeshResult = {
 	positions: Float32Array;
 	/** Flat per-vertex flat-shaded normals, parallel to {@link positions}. */
 	normals: Float32Array;
+	/** Layer-major 8-bit grayscale pixels, retained as the canonical export slice. */
+	layerPixels: Uint8Array;
+	width: number;
+	height: number;
+	volumeCubicMm: number;
 	triangleCount: number;
 	layerCount: number;
 	zHeightMm: number;
@@ -71,6 +76,10 @@ export function buildPreviewMesh(
 		return {
 			positions: new Float32Array(),
 			normals: new Float32Array(),
+			layerPixels: new Uint8Array(),
+			width,
+			height,
+			volumeCubicMm: 0,
 			triangleCount: 0,
 			layerCount: 0,
 			zHeightMm: 0,
@@ -94,9 +103,18 @@ export function buildPreviewMesh(
 		for (let i = 0; i < 6; i += 1) normals.push(nx, ny, nz);
 	};
 
-	const occupancy = (mask: CoverageMask): Uint8Array => {
+	const layerPixels = new Uint8Array(width * height * layerCount);
+	let volumeCoverage = 0;
+	const occupancy = (mask: CoverageMask, layerIndex: number): Uint8Array => {
 		const out = new Uint8Array(mask.data.length);
-		for (let i = 0; i < out.length; i += 1) out[i] = mask.data[i] >= PREVIEW_ISO_LEVEL ? 1 : 0;
+		const layerOffset = layerIndex * mask.data.length;
+		for (let i = 0; i < out.length; i += 1) {
+			const coverage = mask.data[i];
+			volumeCoverage += coverage;
+			const pixel = Math.round(coverage * 255);
+			layerPixels[layerOffset + i] = pixel;
+			out[i] = pixel >= Math.ceil(PREVIEW_ISO_LEVEL * 255) ? 1 : 0;
+		}
 		return out;
 	};
 
@@ -212,7 +230,7 @@ export function buildPreviewMesh(
 
 	let previousOccupancy: Uint8Array | null = null;
 	for (let layerIndex = 0; layerIndex < layerCount; layerIndex += 1) {
-		const occ = occupancy(rasterizer.coverageMask(layerIndex));
+		const occ = occupancy(rasterizer.coverageMask(layerIndex), layerIndex);
 		emitHorizontalFaces(occ, previousOccupancy, layerIndex * layerHeightMm);
 		emitWalls(occ, layerIndex * layerHeightMm, (layerIndex + 1) * layerHeightMm);
 		previousOccupancy = occ;
@@ -224,6 +242,10 @@ export function buildPreviewMesh(
 	return {
 		positions: Float32Array.from(positions),
 		normals: Float32Array.from(normals),
+		layerPixels,
+		width,
+		height,
+		volumeCubicMm: volumeCoverage * pitchX * pitchY * layerHeightMm,
 		triangleCount: positions.length / 9,
 		layerCount,
 		zHeightMm: layerCount * layerHeightMm,

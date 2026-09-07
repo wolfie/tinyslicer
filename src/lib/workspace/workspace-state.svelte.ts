@@ -10,6 +10,8 @@ export type { WorkflowStep } from './workflow-state.svelte';
 export type WorkspaceStateOptions = {
 	/** Overrides the automatic-support worker factory (tests inject a synchronous stub). */
 	createAutoSupportWorker?: () => Promise<Worker>;
+	/** Overrides the slice worker factory (tests inject a synchronous stub). */
+	createPreviewWorker?: () => Promise<Worker>;
 	export?: ProjectExportOptions;
 };
 
@@ -22,11 +24,12 @@ export type WorkspaceStateOptions = {
 export class WorkspaceState {
 	readonly scene = new SceneState();
 	readonly supports: SupportsState;
-	readonly preview = new PreviewBuild();
+	readonly preview: PreviewBuild;
 	readonly export: ProjectExport;
 	readonly workflow: WorkflowState;
 
 	constructor(options: WorkspaceStateOptions = {}) {
+		this.preview = new PreviewBuild(options.createPreviewWorker);
 		this.export = new ProjectExport(options.export);
 		this.supports = new SupportsState(options.createAutoSupportWorker, () =>
 			this.workflow.onSupportSetChanged()

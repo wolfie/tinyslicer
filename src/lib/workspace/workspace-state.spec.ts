@@ -315,6 +315,26 @@ describe('workspace workflow', () => {
 		expect(workspace.workflow.discardDialogOpen).toBe(true);
 	});
 
+	it('invalidates a ready slice when a manual support is added', () => {
+		const workspace = new WorkspaceState();
+		workspace.setModel(modelWithinBuildVolume());
+		workspace.workflow.requestStep('supports');
+		workspace.preview.status = 'ready';
+		workspace.preview.mesh = {
+			positions: new Float32Array(9),
+			normals: new Float32Array(9)
+		};
+
+		workspace.workflow.placeSupport({
+			position: { x: 12, y: 14, z: 5 },
+			normal: { x: 0, y: 0, z: 1 }
+		});
+
+		expect(workspace.preview.status).toBe('idle');
+		expect(workspace.preview.mesh).toBeNull();
+		expect(workspace.workflow.canNavigateTo('export')).toBe(false);
+	});
+
 	it('clears any sliced preview when a new model is loaded', () => {
 		const workspace = new WorkspaceState();
 		workspace.setModel(modelWithinBuildVolume());

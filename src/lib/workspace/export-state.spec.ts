@@ -1,12 +1,9 @@
 import { inflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 
-import type {
-	ExportSliceWorkerMessage,
-	ExportSliceWorkerRequest
-} from '$lib/slicing/export-slice-worker-types';
 import type { ImportedStlModel } from './stl-importer';
 import { ProjectExport, type ProjectExportInput } from './export-state.svelte';
+import type { SliceLayerWriter } from './preview-state.svelte';
 
 const missing = () => new DOMException('Missing', 'NotFoundError');
 
@@ -67,53 +64,20 @@ class MemoryDirectoryHandle {
 	}
 }
 
-class StubSliceWorker {
-	onmessage: ((event: MessageEvent<ExportSliceWorkerMessage>) => void) | null = null;
-	onerror: ((event: ErrorEvent) => void) | null = null;
-	#id = 0;
-	#nextLayer = 1;
+class StubSliceSource {
+	constructor(readonly layerCount = 1) {}
 
-	constructor(private readonly totalLayers = 1) {}
-
-	#emitNext() {
-		if (this.#nextLayer > this.totalLayers) {
-			this.onmessage?.({
-				data: {
-					type: 'complete',
-					id: this.#id,
-					totalLayers: this.totalLayers,
-					volumeCubicMm: 10
-				}
-			} as MessageEvent<ExportSliceWorkerMessage>);
-			return;
+	async streamPngLayers(writeLayer: SliceLayerWriter, signal?: AbortSignal) {
+		for (let layerNumber = 1; layerNumber <= this.layerCount; layerNumber += 1) {
+			if (signal?.aborted) throw new Error('The export was cancelled.');
+			await writeLayer(
+				layerNumber,
+				this.layerCount,
+				Uint8Array.from([137, 80, 78, 71, layerNumber]).buffer
+			);
 		}
-		this.onmessage?.({
-			data: {
-				type: 'layer',
-				id: this.#id,
-				layerNumber: this.#nextLayer,
-				totalLayers: this.totalLayers,
-				png: Uint8Array.from([137, 80, 78, 71, this.#nextLayer++]).buffer
-			}
-		} as MessageEvent<ExportSliceWorkerMessage>);
+		return { totalLayers: this.layerCount, volumeCubicMm: 10 };
 	}
-
-	postMessage(request: ExportSliceWorkerRequest) {
-		if (request.type === 'start') {
-			this.#id = request.id;
-			this.#nextLayer = 1;
-			queueMicrotask(() => {
-				this.onmessage?.({
-					data: { type: 'started', id: this.#id, totalLayers: this.totalLayers }
-				} as MessageEvent<ExportSliceWorkerMessage>);
-				this.#emitNext();
-			});
-		} else if (request.type === 'continue') {
-			queueMicrotask(() => this.#emitNext());
-		}
-	}
-
-	terminate() {}
 }
 
 function model(): ImportedStlModel {
@@ -129,14 +93,11 @@ function model(): ImportedStlModel {
 	};
 }
 
-function exportInput(): ProjectExportInput {
+function exportInput(totalLayers = 1): ProjectExportInput {
 	return {
 		model: model(),
-		translation: { x: 0, y: 0, z: 0 },
-		rotation: { x: 0, y: 0, z: 0, w: 1 },
-		supportPlan: { structures: [], unresolvedPoints: [] },
-		raftIslands: [],
-		previewMesh: { positions: new Float32Array(9), normals: new Float32Array(9) }
+		previewMesh: { positions: new Float32Array(9), normals: new Float32Array(9) },
+		slice: new StubSliceSource(totalLayers)
 	};
 }
 
@@ -172,7 +133,6 @@ describe('ProjectExport', () => {
 		const parent = new MemoryDirectoryHandle('Prints');
 		const projectExport = new ProjectExport({
 			chooseDirectory: async () => parent as unknown as FileSystemDirectoryHandle,
-			createWorker: async () => new StubSliceWorker() as unknown as Worker,
 			renderPreviews: async () => ({
 				preview: new Blob(['large preview']),
 				cropped: new Blob(['small preview'])
@@ -204,7 +164,6 @@ describe('ProjectExport', () => {
 	it('downloads a ZIP containing the complete project folder', async () => {
 		let downloaded: { blob: Blob; filename: string } | undefined;
 		const projectExport = new ProjectExport({
-			createWorker: async () => new StubSliceWorker() as unknown as Worker,
 			renderPreviews: async () => ({
 				preview: new Blob(['large preview']),
 				cropped: new Blob(['small preview'])
@@ -233,11 +192,10 @@ describe('ProjectExport', () => {
 		const parent = new MemoryDirectoryHandle('Prints');
 		const projectExport = new ProjectExport({
 			chooseDirectory: async () => parent as unknown as FileSystemDirectoryHandle,
-			createWorker: async () => new StubSliceWorker(2) as unknown as Worker,
 			renderPreviews: async () => ({ preview: new Blob(), cropped: new Blob() })
 		});
 
-		await expect(projectExport.start(exportInput(), 'Tooth')).resolves.toBe(true);
+		await expect(projectExport.start(exportInput(2), 'Tooth')).resolves.toBe(true);
 
 		expect([...parent.directories.get('Tooth')!.files.keys()]).toEqual([
 			'preview.png',

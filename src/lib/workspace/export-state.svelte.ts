@@ -1,30 +1,19 @@
-import type {
-	ExportSliceWorkerMessage,
-	ExportSliceWorkerRequest
-} from '$lib/slicing/export-slice-worker-types';
 import { encodeGrayscalePng } from '$lib/slicing/grayscale-png';
 import { createTinyMakerGcode, validateProjectName } from '$lib/slicing/tinymaker-project';
 import { StoredZipArchive } from '$lib/slicing/zip-archive';
 import { TINYMAKER_PROFILE } from '$lib/printer/tinymaker';
-import type { RaftIsland } from '$lib/supports/raft-plan';
-import type { ModelRotation, ModelScale, ModelTranslation } from './build-volume-renderer/types';
 import type { ImportedStlModel } from './stl-importer';
-import type { SupportPlan } from './supports';
 import { createNewProjectDirectory, writeNewProjectFile } from './project-files';
 import { renderProjectPreviews } from './project-preview';
-import type { PreviewMeshData } from './preview-state.svelte';
+import type { PreviewMeshData, SliceLayerSource, SliceStreamResult } from './preview-state.svelte';
 
 export type ProjectExportStatus = 'idle' | 'picking' | 'slicing' | 'saved' | 'error';
 export type ProjectExportMode = 'directory' | 'archive';
 
 export type ProjectExportInput = {
-	model: ImportedStlModel;
-	translation: ModelTranslation;
-	rotation: ModelRotation;
-	scale?: ModelScale;
-	supportPlan: SupportPlan;
-	raftIslands: readonly RaftIsland[];
+	model: Pick<ImportedStlModel, 'name'>;
 	previewMesh: PreviewMeshData;
+	slice: SliceLayerSource;
 };
 
 type DirectoryPicker = (options?: {
@@ -34,15 +23,9 @@ type DirectoryPicker = (options?: {
 
 export type ProjectExportOptions = {
 	chooseDirectory?: DirectoryPicker;
-	createWorker?: () => Promise<Worker>;
 	renderPreviews?: typeof renderProjectPreviews;
 	downloadFile?: (blob: Blob, filename: string) => void;
 };
-
-async function defaultCreateWorker(): Promise<Worker> {
-	const { default: ExportSliceWorker } = await import('$lib/slicing/export-slice-worker?worker');
-	return new ExportSliceWorker();
-}
 
 function defaultDirectoryPicker(options?: Parameters<DirectoryPicker>[0]) {
 	return window.showDirectoryPicker(options);
@@ -82,16 +65,13 @@ export class ProjectExport {
 	partialProjectPath = $state<string | null>(null);
 
 	#chooseDirectory: DirectoryPicker;
-	#createWorker: () => Promise<Worker>;
 	#renderPreviews: typeof renderProjectPreviews;
 	#downloadFile: (blob: Blob, filename: string) => void;
-	#worker: Worker | null = null;
-	#pendingResolve: ((result: boolean) => void) | null = null;
+	#abortController: AbortController | null = null;
 	#requestId = 0;
 
 	constructor(options: ProjectExportOptions = {}) {
 		this.#chooseDirectory = options.chooseDirectory ?? defaultDirectoryPicker;
-		this.#createWorker = options.createWorker ?? defaultCreateWorker;
 		this.#renderPreviews = options.renderPreviews ?? renderProjectPreviews;
 		this.#downloadFile = options.downloadFile ?? defaultDownloadFile;
 	}
@@ -137,6 +117,7 @@ export class ProjectExport {
 			parent = await this.#chooseDirectory({ id: 'tinyslicer-project-export', mode: 'readwrite' });
 			if (this.#requestId !== requestId) return false;
 		} catch (error) {
+			if (this.#requestId !== requestId) return false;
 			if (isPickerCancellation(error)) {
 				this.status = 'idle';
 				return false;
@@ -170,6 +151,7 @@ export class ProjectExport {
 				}
 			);
 		} catch (error) {
+			if (this.#requestId !== requestId) return false;
 			this.#fail(
 				error instanceof Error ? error.message : 'The print project could not be written.'
 			);
@@ -213,6 +195,7 @@ export class ProjectExport {
 				}
 			);
 		} catch (error) {
+			if (this.#requestId !== requestId) return false;
 			this.#fail(
 				error instanceof Error ? error.message : 'The print project archive could not be created.'
 			);
@@ -221,7 +204,7 @@ export class ProjectExport {
 	}
 
 	reset() {
-		this.#stopWorker();
+		this.#stopExport();
 		this.status = 'idle';
 		this.mode = null;
 		this.progress = 0;
@@ -234,112 +217,51 @@ export class ProjectExport {
 	}
 
 	dispose() {
-		this.#stopWorker();
+		this.#stopExport();
 	}
 
 	async #sliceLayers(
 		input: ProjectExportInput,
 		requestId: number,
 		writeLayer: (layerNumber: number, png: ArrayBuffer) => Promise<void>,
-		completeProject: (
-			message: Extract<ExportSliceWorkerMessage, { type: 'complete' }>
-		) => Promise<void>
+		completeProject: (result: SliceStreamResult) => Promise<void>
 	): Promise<boolean> {
-		let worker: Worker;
+		const controller = new AbortController();
+		this.#abortController = controller;
+		this.totalLayers = input.slice.layerCount;
 		try {
-			worker = await this.#createWorker();
-		} catch {
-			throw new Error('The slicing worker could not be started.');
+			const result = await input.slice.streamPngLayers(async (layerNumber, totalLayers, png) => {
+				if (this.#requestId !== requestId) throw new Error('The export was cancelled.');
+				this.totalLayers = totalLayers;
+				await writeLayer(layerNumber, png);
+				this.completedLayers = layerNumber;
+				this.progress = totalLayers > 0 ? layerNumber / totalLayers : 1;
+			}, controller.signal);
+			if (this.#requestId !== requestId) return false;
+
+			// At 0.1 mm the firmware halves the file count, then prints odd-numbered PNGs.
+			// An even blank tail keeps the final real odd layer reachable when the stack is odd.
+			// Count: https://github.com/TinyMaker3D/TinyMaker-Open-Source-3D-Printer/blob/65fab365ebbd2e3df5ce9552eac79efd6ea75f9a/Firmware/TinyMaker_Firmware_v1_0_2/Interface.ino#L177-L183
+			// Selection: https://github.com/TinyMaker3D/TinyMaker-Open-Source-3D-Printer/blob/65fab365ebbd2e3df5ce9552eac79efd6ea75f9a/Firmware/TinyMaker_Firmware_v1_0_2/PNG.ino#L47-L57
+			if (result.totalLayers % 2 !== 0) {
+				await writeLayer(result.totalLayers + 1, await createEmptyTinyMakerLayer());
+			}
+			await completeProject(result);
+			this.completedLayers = result.totalLayers;
+			this.totalLayers = result.totalLayers;
+			this.progress = 1;
+			this.status = 'saved';
+			return true;
+		} finally {
+			if (this.#abortController === controller) this.#abortController = null;
 		}
-		if (this.#requestId !== requestId) {
-			worker.terminate();
-			return false;
-		}
-		this.#worker = worker;
-
-		return new Promise<boolean>((resolve) => {
-			let settled = false;
-			const finish = (result: boolean) => {
-				if (settled) return;
-				settled = true;
-				this.#pendingResolve = null;
-				this.#stopWorker();
-				resolve(result);
-			};
-			this.#pendingResolve = resolve;
-			const fail = (message: string) => {
-				this.#fail(message);
-				finish(false);
-			};
-
-			worker.onerror = () => fail('The slicing worker stopped unexpectedly.');
-			worker.onmessage = (event: MessageEvent<ExportSliceWorkerMessage>) => {
-				const message = event.data;
-				if (message.id !== requestId || this.#requestId !== requestId) return;
-				void (async () => {
-					try {
-						if (message.type === 'error') {
-							fail(message.message);
-							return;
-						}
-						if (message.type === 'started') {
-							this.totalLayers = message.totalLayers;
-							return;
-						}
-						if (message.type === 'layer') {
-							await writeLayer(message.layerNumber, message.png);
-							this.completedLayers = message.layerNumber;
-							this.totalLayers = message.totalLayers;
-							this.progress =
-								message.totalLayers > 0 ? message.layerNumber / message.totalLayers : 1;
-							const next: ExportSliceWorkerRequest = { type: 'continue', id: requestId };
-							worker.postMessage(next);
-							return;
-						}
-
-						// At 0.1 mm the firmware halves the file count, then prints odd-numbered PNGs.
-						// An even blank tail keeps the final real odd layer reachable when the stack is odd.
-						// Count: https://github.com/TinyMaker3D/TinyMaker-Open-Source-3D-Printer/blob/65fab365ebbd2e3df5ce9552eac79efd6ea75f9a/Firmware/TinyMaker_Firmware_v1_0_2/Interface.ino#L177-L183
-						// Selection: https://github.com/TinyMaker3D/TinyMaker-Open-Source-3D-Printer/blob/65fab365ebbd2e3df5ce9552eac79efd6ea75f9a/Firmware/TinyMaker_Firmware_v1_0_2/PNG.ino#L47-L57
-						if (message.totalLayers % 2 !== 0) {
-							await writeLayer(message.totalLayers + 1, await createEmptyTinyMakerLayer());
-						}
-						await completeProject(message);
-						this.completedLayers = message.totalLayers;
-						this.totalLayers = message.totalLayers;
-						this.progress = 1;
-						this.status = 'saved';
-						finish(true);
-					} catch (error) {
-						fail(error instanceof Error ? error.message : 'A project file could not be written.');
-					}
-				})();
-			};
-
-			const positions = input.model.positions.slice();
-			const request: ExportSliceWorkerRequest = {
-				type: 'start',
-				id: requestId,
-				positions,
-				bounds: input.model.bounds,
-				translation: { ...input.translation },
-				rotation: { ...input.rotation },
-				scale: input.scale ?? 1,
-				supportPlan: input.supportPlan,
-				raftIslands: input.raftIslands
-			};
-			worker.postMessage(request, [positions.buffer]);
-		});
 	}
 
-	#createGcode(
-		input: ProjectExportInput,
-		message: Extract<ExportSliceWorkerMessage, { type: 'complete' }>
-	): string {
+	#createGcode(input: ProjectExportInput, result: SliceStreamResult): string {
 		return createTinyMakerGcode({
 			modelFileName: input.model.name,
-			layerCount: message.totalLayers,
-			volumeCubicMm: message.volumeCubicMm
+			layerCount: result.totalLayers,
+			volumeCubicMm: result.volumeCubicMm
 		});
 	}
 
@@ -348,16 +270,9 @@ export class ProjectExport {
 		this.error = message;
 	}
 
-	#stopWorker() {
+	#stopExport() {
 		this.#requestId += 1;
-		if (this.#worker) {
-			this.#worker.onmessage = null;
-			this.#worker.onerror = null;
-			this.#worker.terminate();
-			this.#worker = null;
-		}
-		const resolve = this.#pendingResolve;
-		this.#pendingResolve = null;
-		resolve?.(false);
+		this.#abortController?.abort();
+		this.#abortController = null;
 	}
 }

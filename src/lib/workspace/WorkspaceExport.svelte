@@ -4,13 +4,12 @@
 		TINYMAKER_PROJECT_NAME_MAX_LENGTH,
 		validateProjectName
 	} from '$lib/slicing/tinymaker-project';
-	import { useExport, usePreview, useScene, useSupports } from './workspace-context';
+	import { useExport, usePreview, useScene } from './workspace-context';
 
 	type Props = { onBack: () => void };
 	let { onBack }: Props = $props();
 
 	const scene = useScene();
-	const supports = useSupports();
 	const preview = usePreview();
 	const projectExport = useExport();
 	let projectName = $state(defaultProjectName(scene.model?.name ?? 'TinyMaker project'));
@@ -25,12 +24,8 @@
 		if (nameError || !scene.model || !preview.mesh) return;
 		const input = {
 			model: scene.model,
-			translation: scene.translation,
-			rotation: scene.rotation,
-			scale: scene.scale,
-			supportPlan: supports.plan,
-			raftIslands: supports.raftPlan.islands,
-			previewMesh: preview.mesh
+			previewMesh: preview.mesh,
+			slice: preview
 		};
 		if (destination === 'directory') await projectExport.start(input, projectName);
 		else await projectExport.downloadArchive(input, projectName);
