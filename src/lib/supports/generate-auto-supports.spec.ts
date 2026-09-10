@@ -128,6 +128,22 @@ describe('automatic support suggestions', () => {
 		expect(result.hits.some((hit) => hit.position.x < 7 || hit.position.x > 9)).toBe(true);
 	});
 
+	it('orients contacts to transformed sloped faces instead of forcing vertical necks', () => {
+		const angle = (20 * Math.PI) / 180;
+		const result = generateAutoSupportHits(
+			modelFromPositions(boxPositions([4, 4, 5], [12, 12, 6])),
+			ZERO_MODEL_TRANSLATION,
+			{ x: 0, y: Math.sin(angle / 2), z: 0, w: Math.cos(angle / 2) },
+			undefined,
+			SETTINGS,
+			PROFILE
+		);
+
+		expect(result.hits.length).toBeGreaterThan(0);
+		expect(result.hits.some((hit) => Math.abs(hit.normal.x) > 0.1)).toBe(true);
+		expect(result.hits.every((hit) => hit.normal.z < 0)).toBe(true);
+	});
+
 	it('terminates a post on model geometry below when enough clearance exists', () => {
 		const result = generate([
 			...boxPositions([4, 4, 0], [12, 12, 3]),

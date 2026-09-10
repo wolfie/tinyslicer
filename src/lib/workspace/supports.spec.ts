@@ -10,6 +10,7 @@ import {
 	SUPPORT_JUNCTION_DIAMETER_MM,
 	SUPPORT_MAX_NECK_ANGLE_DEGREES,
 	SUPPORT_CONTACT_DIAMETER_MM,
+	SUPPORT_CONTACT_PENETRATION_MM,
 	SUPPORT_NECK_DIAMETER_MM,
 	SUPPORT_NECK_LENGTH_MM,
 	SUPPORT_PLATE_EDGE_MARGIN_MM,
@@ -47,7 +48,7 @@ describe('support post layout', () => {
 		expect(neck).toMatchObject({
 			kind: 'neck',
 			start: shaft && 'end' in shaft ? shaft.end : undefined,
-			end: { x: 12, y: 14, z: 10 }
+			end: { x: 12, y: 14, z: 10 + SUPPORT_CONTACT_PENETRATION_MM }
 		});
 	});
 
@@ -62,7 +63,7 @@ describe('support post layout', () => {
 
 		expect(lowerNeck).toEqual({
 			kind: 'neck',
-			start: { x: 12, y: 14, z: 3 },
+			start: { x: 12, y: 14, z: 3 - SUPPORT_CONTACT_PENETRATION_MM },
 			end: { x: 12, y: 14, z: 3 + SUPPORT_NECK_LENGTH_MM },
 			startDiameter: SUPPORT_CONTACT_DIAMETER_MM,
 			endDiameter: SUPPORT_NECK_DIAMETER_MM
@@ -83,8 +84,28 @@ describe('support post layout', () => {
 		expect(upperNeck).toMatchObject({
 			kind: 'neck',
 			start: shaft && 'end' in shaft ? shaft.end : undefined,
-			end: { x: 12, y: 14, z: 10 }
+			end: { x: 12, y: 14, z: 10 + SUPPORT_CONTACT_PENETRATION_MM }
 		});
+	});
+
+	it('penetrates an angled contact along the neck axis without changing its diameter', () => {
+		const structure = createPostSupportStructure({
+			id: 'support-point-1',
+			position: { x: 12, y: 14, z: 10 },
+			normal: { x: 1, y: 0, z: -1 }
+		});
+		const neck = structure?.parts.at(-1);
+
+		expect(neck).toMatchObject({
+			kind: 'neck',
+			endDiameter: SUPPORT_CONTACT_DIAMETER_MM
+		});
+		expect(neck && 'end' in neck ? neck.end.x : undefined).toBeCloseTo(
+			12 - SUPPORT_CONTACT_PENETRATION_MM / Math.sqrt(2)
+		);
+		expect(neck && 'end' in neck ? neck.end.z : undefined).toBeCloseTo(
+			10 + SUPPORT_CONTACT_PENETRATION_MM / Math.sqrt(2)
+		);
 	});
 
 	it(`limits a sideways neck to ${SUPPORT_MAX_NECK_ANGLE_DEGREES} degrees from vertical`, () => {

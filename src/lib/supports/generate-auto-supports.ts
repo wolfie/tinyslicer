@@ -9,7 +9,12 @@ import type {
 	ModelTranslation
 } from '$lib/workspace/build-volume-renderer/types';
 import type { ImportedStlModel } from '$lib/workspace/stl-importer';
-import { createPostSupportStructure, type ModelSurfaceHit } from '$lib/workspace/supports';
+import {
+	createPostSupportStructure,
+	type ModelSurfaceHit,
+	type SupportStructure
+} from '$lib/workspace/supports';
+import { VerticalModelCollisionIndex } from './support-collision';
 import {
 	analyzeUnsupportedLayer,
 	type BinaryLayerMask,
@@ -91,6 +96,7 @@ function isCoveredByEarlierContact(
 
 function contactForCandidate(
 	rasterizer: ModelLayerMaskRasterizer,
+	collisionIndex: VerticalModelCollisionIndex,
 	layerIndex: number,
 	pixel: { x: number; y: number }
 ): ModelSurfaceHit | null {
@@ -121,9 +127,30 @@ function contactForCandidate(
 
 	return {
 		position,
-		normal: { x: 0, y: 0, z: -1 },
+		normal: collisionIndex.normalAtLowerSurface(position.x, position.y, position.z) ?? {
+			x: 0,
+			y: 0,
+			z: -1
+		},
 		...(lowerContactPosition ? { lowerContactPosition } : {})
 	};
+}
+
+function shaftCollidesWithModel(
+	structure: SupportStructure,
+	collisionIndex: VerticalModelCollisionIndex
+): boolean {
+	return structure.parts.some(
+		(part) =>
+			part.kind === 'shaft' &&
+			collisionIndex.intersectsVerticalCylinder({
+				x: part.start.x,
+				y: part.start.y,
+				minimumZMm: part.start.z,
+				maximumZMm: part.end.z,
+				radiusMm: Math.max(part.startDiameter, part.endDiameter) / 2
+			})
+	);
 }
 
 /**
@@ -155,6 +182,7 @@ export function generateAutoSupportHits(
 		onProgress?.(0, 0);
 		return { hits: [], diagnostics };
 	}
+	const collisionIndex = new VerticalModelCollisionIndex(model, translation, rotation, scale);
 
 	const detectionSettings: UnsupportedDetectionSettings = {
 		pixelPitchMm: rasterizer.pixelPitchMm.x,
@@ -215,8 +243,9 @@ export function generateAutoSupportHits(
 				continue;
 			}
 
-			const hit = contactForCandidate(rasterizer, layerIndex, candidate.pixel);
-			if (!hit || !createPostSupportStructure({ id: 'candidate', ...hit })) {
+			const hit = contactForCandidate(rasterizer, collisionIndex, layerIndex, candidate.pixel);
+			const structure = hit ? createPostSupportStructure({ id: 'candidate', ...hit }) : null;
+			if (!hit || !structure || shaftCollidesWithModel(structure, collisionIndex)) {
 				diagnostics.rejectedCandidateCount += 1;
 				continue;
 			}

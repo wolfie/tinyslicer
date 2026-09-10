@@ -7,6 +7,8 @@ export const SUPPORT_FOOT_DIAMETER_MM = 4;
 export const SUPPORT_NECK_LENGTH_MM = 1.5;
 export const SUPPORT_NECK_DIAMETER_MM = 0.8;
 export const SUPPORT_CONTACT_DIAMETER_MM = 0.4;
+/** Extends each contact into the model so the sliced parts overlap across several layers. */
+export const SUPPORT_CONTACT_PENETRATION_MM = 0.2;
 export const SUPPORT_JUNCTION_DIAMETER_MM = SUPPORT_SHAFT_DIAMETER_MM;
 export const SUPPORT_MAX_NECK_ANGLE_DEGREES = 45;
 export const SUPPORT_FOOT_FLARE_ANGLE_DEGREES = 45;
@@ -102,6 +104,15 @@ export function supportNeckBase(point: ModelSurfaceHit): Point3 {
 	};
 }
 
+export function supportContactEnd(point: ModelSurfaceHit): Point3 {
+	const neckDirection = supportNeckDirection(point.normal);
+	return {
+		x: point.position.x - neckDirection.x * SUPPORT_CONTACT_PENETRATION_MM,
+		y: point.position.y - neckDirection.y * SUPPORT_CONTACT_PENETRATION_MM,
+		z: point.position.z - neckDirection.z * SUPPORT_CONTACT_PENETRATION_MM
+	};
+}
+
 /** Where a plate-anchored post meets the plate, used to cluster feet into rafts. */
 export function supportFootCenter(point: ModelSurfaceHit): Point3 {
 	const neckBase = supportNeckBase(point);
@@ -137,6 +148,11 @@ export function createPostSupportStructure(
 	const neckBase = supportNeckBase(point);
 
 	if (point.lowerContactPosition) {
+		const lowerContactStart = {
+			x: point.lowerContactPosition.x,
+			y: point.lowerContactPosition.y,
+			z: point.lowerContactPosition.z - SUPPORT_CONTACT_PENETRATION_MM
+		};
 		const lowerNeckBase = {
 			x: point.lowerContactPosition.x,
 			y: point.lowerContactPosition.y,
@@ -150,7 +166,7 @@ export function createPostSupportStructure(
 			parts: [
 				{
 					kind: 'neck',
-					start: { ...point.lowerContactPosition },
+					start: lowerContactStart,
 					end: lowerNeckBase,
 					startDiameter: SUPPORT_CONTACT_DIAMETER_MM,
 					endDiameter: SUPPORT_NECK_DIAMETER_MM
@@ -175,7 +191,7 @@ export function createPostSupportStructure(
 				{
 					kind: 'neck',
 					start: { ...neckBase },
-					end: { ...point.position },
+					end: supportContactEnd(point),
 					startDiameter: SUPPORT_NECK_DIAMETER_MM,
 					endDiameter: SUPPORT_CONTACT_DIAMETER_MM
 				}
@@ -208,7 +224,7 @@ export function createPostSupportStructure(
 				{
 					kind: 'neck',
 					start: { ...neckBase },
-					end: { ...point.position },
+					end: supportContactEnd(point),
 					startDiameter: SUPPORT_NECK_DIAMETER_MM,
 					endDiameter: SUPPORT_CONTACT_DIAMETER_MM
 				}
@@ -244,7 +260,7 @@ export function createPostSupportStructure(
 			{
 				kind: 'neck',
 				start: { ...neckBase },
-				end: { ...point.position },
+				end: supportContactEnd(point),
 				startDiameter: SUPPORT_NECK_DIAMETER_MM,
 				endDiameter: SUPPORT_CONTACT_DIAMETER_MM
 			}

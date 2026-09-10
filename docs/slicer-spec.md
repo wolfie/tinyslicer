@@ -131,10 +131,11 @@ Initial defaults:
 | Tapered neck length    |           1.5 mm |
 | Neck diameter at shaft |           0.8 mm |
 | Contact diameter       |           0.4 mm |
+| Contact penetration    |           0.2 mm |
 
 These dimensions must be central constants even if the MVP does not expose them as user settings.
 
-The support should use the picked surface normal to choose a sensible contact direction. The main shaft remains vertical. Invalid placements, including a tip below the plate or a zero-height shaft, must be rejected or visibly reported.
+The support should use the picked surface normal to choose a sensible contact direction. The contact tip extends 0.2 mm into the model along the neck axis so the support and model overlap across multiple sliced layers. The main shaft remains vertical. Collision checks must use the shaft's full radius, not only its centreline. Invalid placements, including a tip below the plate, a zero-height shaft, or a shaft that intersects unrelated model geometry, must be rejected or visibly reported.
 
 Supports are independent scene objects. A costly 3D boolean union with the STL is not required; their cross-sections can be combined with the model at rasterization time.
 
