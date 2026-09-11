@@ -8,8 +8,11 @@
 		pickModelSurface,
 		ROTATION_SNAP_DEGREES,
 		startModelTransform,
+		startScanDrag,
 		stopModelTransform,
+		stopScanDrag,
 		updateModelTransform,
+		updateScanDrag,
 		type BuildVolumeInteractionMode,
 		type ModelInteraction,
 		type ModelRotation,
@@ -22,7 +25,11 @@
 	import type { ModelSurfaceHit, SupportPoint, SupportStructure } from './supports';
 	import type { RaftIsland } from '$lib/supports/raft-plan';
 	import type { AutoSupportBuildStatus } from './auto-support-state.svelte';
-	import type { PreviewBuildStatus, PreviewMeshData } from './preview-state.svelte';
+	import type {
+		PreviewBuildStatus,
+		PreviewMeshData,
+		SliceLayerImage
+	} from './preview-state.svelte';
 
 	type Props = {
 		model: ImportedStlModel | null;
@@ -47,6 +54,11 @@
 		previewZHeightMm: number;
 		previewWatertight: boolean;
 		previewError: string | null;
+		scanEnabled?: boolean;
+		scanZMm?: number;
+		scanLayerIndex?: number;
+		scanImage?: SliceLayerImage | null;
+		scanLoading?: boolean;
 		onTranslationChange: (translation: ModelTranslation) => void;
 		onRotationChange: (rotation: ModelRotation) => void;
 		onScaleChange?: (scale: ModelScale) => void;
@@ -56,6 +68,8 @@
 		onBackToPrepare: () => void;
 		onBackToSupports: () => void;
 		onEnterExport: () => void;
+		onScanEnabledChange?: (enabled: boolean) => void;
+		onScanZChange?: (zMm: number) => void;
 	};
 
 	let {
@@ -81,6 +95,11 @@
 		previewZHeightMm,
 		previewWatertight,
 		previewError,
+		scanEnabled = false,
+		scanZMm = 0,
+		scanLayerIndex = 0,
+		scanImage = null,
+		scanLoading = false,
 		onTranslationChange,
 		onRotationChange,
 		onScaleChange = () => {},
@@ -89,20 +108,23 @@
 		onEnterPreview,
 		onBackToPrepare,
 		onBackToSupports,
-		onEnterExport
+		onEnterExport,
+		onScanEnabledChange = () => {},
+		onScanZChange = () => {}
 	}: Props = $props();
 
 	const camera = new OrbitCamera();
 	const canvasMetrics = new CanvasMetrics();
 	let modelInteraction = $state<ModelInteraction | null>(null);
+	let scanDragging = $state(false);
 	let placingSupports = $derived(interactionMode === 'place-supports');
 	let previewing = $derived(interactionMode === 'readonly');
 	let previewPercent = $derived(Math.round(previewProgress * 100));
 	let autoSupportPercent = $derived(Math.round(autoSupportProgress * 100));
 	let generatingSupports = $derived(placingSupports && autoSupportStatus === 'building');
-	let orbitHintActive = $derived(camera.orbiting || modelInteraction !== null);
+	let orbitHintActive = $derived(camera.orbiting || modelInteraction !== null || scanDragging);
 	let canvasCursorClass = $derived(
-		camera.orbiting || modelInteraction !== null
+		camera.orbiting || modelInteraction !== null || scanDragging
 			? 'cursor-grabbing'
 			: generatingSupports
 				? 'cursor-progress'
@@ -110,6 +132,11 @@
 					? 'cursor-crosshair'
 					: 'cursor-default'
 	);
+
+	// An active drag can outlive scan mode being toggled off mid-gesture.
+	$effect(() => {
+		if (!scanEnabled) scanDragging = false;
+	});
 
 	const BACK_BUTTON_CLASS =
 		'u-chip cursor-pointer border-green/30 text-[#9edeb7] hover:bg-[rgba(29,74,47,0.35)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#65d899] [&_svg]:w-3.5';
@@ -122,6 +149,7 @@
 	const ACTION_TITLE = 'text-[10px] font-bold uppercase tracking-[0.02em]';
 	const ACTION_DESC = 'flex flex-col gap-0.5';
 	const GREEN_ACTION_BUTTON = `${ACTION_BOX} cursor-pointer border border-green/48 bg-[rgba(18,61,37,0.9)] text-[#70e6a1] hover:border-[rgba(112,230,161,0.76)] hover:bg-[rgba(21,77,45,0.96)] hover:shadow-[0_8px_28px_rgba(0,0,0,0.28),0_0_18px_rgba(87,220,139,0.08)] focus-visible:outline-2 focus-visible:outline-offset-[3px] focus-visible:outline-[#70e6a1]`;
+	const BLUE_ACTION_BUTTON = `${ACTION_BOX} cursor-pointer border border-[rgba(120,200,255,0.48)] bg-[rgba(15,40,64,0.9)] text-[#8fcdfa] hover:border-[rgba(120,200,255,0.76)] hover:bg-[rgba(19,52,82,0.96)] hover:shadow-[0_8px_28px_rgba(0,0,0,0.28),0_0_18px_rgba(120,200,255,0.08)] focus-visible:outline-2 focus-visible:outline-offset-[3px] focus-visible:outline-[#8fcdfa]`;
 	const CORNER_ACTION_STACK =
 		'absolute right-[17px] bottom-[17px] flex w-[min(280px,calc(100%_-_34px))] flex-col gap-2 max-mobile:right-3 max-mobile:bottom-[54px] max-mobile:w-[calc(100%_-_24px)]';
 	const PREVIEW_STATUS_BASE =
@@ -161,16 +189,29 @@
 		) {
 			return;
 		}
+		if (
+			previewing &&
+			scanEnabled &&
+			startScanDrag(event, scanZMm, previewZHeightMm, onScanZChange)
+		) {
+			scanDragging = true;
+			return;
+		}
 		camera.start(event);
 	}
 
 	function handlePointerMove(event: PointerEvent) {
 		if (interactionMode === 'transform-model' && updateModelTransform(event)) return;
+		if (previewing && scanEnabled && updateScanDrag(event)) return;
 		camera.update(event);
 	}
 
 	function handlePointerEnd(event: PointerEvent) {
 		if (interactionMode === 'transform-model' && stopModelTransform(event)) return;
+		if (previewing && scanEnabled && stopScanDrag(event)) {
+			scanDragging = false;
+			return;
+		}
 		camera.stop(event);
 	}
 </script>
@@ -225,7 +266,9 @@
 				supportPoints,
 				supportStructures,
 				raftIslands,
-				previewMesh: previewStatus === 'ready' ? previewMesh : null
+				previewMesh: previewStatus === 'ready' ? previewMesh : null,
+				scanZMm: previewing && scanEnabled ? scanZMm : null,
+				scanImage: previewing && scanEnabled ? scanImage : null
 			})}
 			onpointerdown={handlePointerDown}
 			onpointermove={handlePointerMove}
@@ -304,15 +347,19 @@
 							? `Scaling model · ${Math.round(modelScale * 100)}%`
 							: camera.orbiting
 								? 'Orbiting view'
-								: previewing
-									? 'Preview is read-only · Drag to orbit'
-									: generatingSupports
-										? 'Generating initial supports · Middle-drag to orbit'
-										: placingSupports
-											? 'Click model to place · Middle-drag to orbit'
-											: model
-												? `Drag upper corners to scale · Rings rotate in ${ROTATION_SNAP_DEGREES}° steps`
-												: 'Middle-drag to orbit'}
+								: previewing && scanEnabled
+									? scanDragging
+										? 'Scrubbing CAT-scan plane'
+										: 'Drag the scan plane · Drag elsewhere to orbit'
+									: previewing
+										? 'Preview is read-only · Drag to orbit'
+										: generatingSupports
+											? 'Generating initial supports · Middle-drag to orbit'
+											: placingSupports
+												? 'Click model to place · Middle-drag to orbit'
+												: model
+													? `Drag upper corners to scale · Rings rotate in ${ROTATION_SNAP_DEGREES}° steps`
+													: 'Middle-drag to orbit'}
 			</span>
 		</div>
 		{#if modelOutsideBuildVolume || (interactionMode === 'transform-model' && canEnterSupports)}
@@ -445,7 +492,33 @@
 								>Mesh was not watertight at sampled pixels — the preview may differ from the print.</span
 							>
 						{/if}
+						{#if scanEnabled}
+							<span
+								>CAT-scan · Layer {scanLayerIndex + 1} of {previewLayerCount} · Z {scanZMm.toFixed(
+									2
+								)} mm{scanLoading ? ' · loading…' : ''}</span
+							>
+						{/if}
 					</div>
+					<button
+						type="button"
+						class={BLUE_ACTION_BUTTON}
+						onclick={() => onScanEnabledChange(!scanEnabled)}
+					>
+						<svg class={ACTION_ICON} viewBox="0 0 24 24" aria-hidden="true">
+							<path d="M4 4h16v16H4z" /><path d="M2 12h20" />
+						</svg>
+						<div class={ACTION_DESC}>
+							<strong class={ACTION_TITLE}
+								>{scanEnabled ? 'Exit CAT-scan view' : 'CAT-scan view'}</strong
+							>
+							<span class="text-[9px] leading-[1.35] text-[#7fb8e6]"
+								>{scanEnabled
+									? 'Drag the plane to scrub through layers.'
+									: 'See a cross-section cut through the model.'}</span
+							>
+						</div>
+					</button>
 					<button type="button" class={GREEN_ACTION_BUTTON} onclick={onEnterExport}>
 						<svg class={ACTION_ICON} viewBox="0 0 24 24" aria-hidden="true">
 							<path d="M4 5h16v14H4zM8 9h8m-4-4v14" />

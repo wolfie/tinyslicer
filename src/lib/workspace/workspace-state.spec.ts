@@ -335,6 +335,26 @@ describe('workspace workflow', () => {
 		expect(workspace.workflow.canNavigateTo('export')).toBe(false);
 	});
 
+	it('turns off the CAT-scan plane when a manual support invalidates the slice', () => {
+		const workspace = new WorkspaceState();
+		workspace.setModel(modelWithinBuildVolume());
+		workspace.workflow.requestStep('supports');
+		workspace.preview.status = 'ready';
+		workspace.preview.mesh = {
+			positions: new Float32Array(9),
+			normals: new Float32Array(9)
+		};
+		workspace.scan.setEnabled(true);
+		expect(workspace.scan.enabled).toBe(true);
+
+		workspace.workflow.placeSupport({
+			position: { x: 12, y: 14, z: 5 },
+			normal: { x: 0, y: 0, z: 1 }
+		});
+
+		expect(workspace.scan.enabled).toBe(false);
+	});
+
 	it('clears any sliced preview when a new model is loaded', () => {
 		const workspace = new WorkspaceState();
 		workspace.setModel(modelWithinBuildVolume());

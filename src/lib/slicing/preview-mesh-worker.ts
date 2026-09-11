@@ -136,6 +136,44 @@ async function emitNextLayer() {
 	}
 }
 
+/** Serves one layer's cached grayscale bytes, unpacked from the same buffer
+ *  `emitNextLayer` slices for PNG export, so the scan preview matches it exactly. */
+function sendLayerPixels(id: number, requestId: number, layerIndex: number) {
+	const slice = cachedSlice;
+	if (!slice || slice.id !== id) {
+		post({
+			type: 'layer-pixels-error',
+			id,
+			requestId,
+			message: 'The cached slice is no longer available.'
+		});
+		return;
+	}
+	if (!Number.isInteger(layerIndex) || layerIndex < 0 || layerIndex >= slice.layerCount) {
+		post({ type: 'layer-pixels-error', id, requestId, message: 'Layer index is out of range.' });
+		return;
+	}
+
+	const pixelsPerLayer = slice.width * slice.height;
+	const offset = layerIndex * pixelsPerLayer;
+	// .slice() (not .subarray()) copies the bytes: the transfer below would
+	// otherwise detach the shared buffer backing every other cached layer.
+	const pixels = slice.layerPixels.slice(offset, offset + pixelsPerLayer);
+	const buffer = pixels.buffer as ArrayBuffer;
+	post(
+		{
+			type: 'layer-pixels',
+			id,
+			requestId,
+			layerIndex,
+			width: slice.width,
+			height: slice.height,
+			pixels: buffer
+		},
+		[buffer]
+	);
+}
+
 worker.onmessage = (event: MessageEvent<PreviewMeshWorkerRequest>) => {
 	const request = event.data;
 	if (request.type === 'build') {
@@ -150,6 +188,10 @@ worker.onmessage = (event: MessageEvent<PreviewMeshWorkerRequest>) => {
 		if (activeExport?.id === request.id && activeExport.exportId === request.exportId) {
 			void emitNextLayer();
 		}
+		return;
+	}
+	if (request.type === 'layer-pixels') {
+		sendLayerPixels(request.id, request.requestId, request.layerIndex);
 		return;
 	}
 	if (activeExport?.id === request.id && activeExport.exportId === request.exportId) {

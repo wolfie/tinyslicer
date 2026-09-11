@@ -46,6 +46,29 @@ class StubSliceWorker {
 		if (request.type === 'export-continue') {
 			queueMicrotask(() => this.#emitLayer(request.id, request.exportId));
 		}
+		if (request.type === 'layer-pixels') {
+			queueMicrotask(() => {
+				if (request.layerIndex < 0 || request.layerIndex >= 2) {
+					this.#emit({
+						type: 'layer-pixels-error',
+						id: request.id,
+						requestId: request.requestId,
+						message: 'Layer index is out of range.'
+					});
+					return;
+				}
+				const pixels = Uint8Array.of(request.layerIndex, request.layerIndex);
+				this.#emit({
+					type: 'layer-pixels',
+					id: request.id,
+					requestId: request.requestId,
+					layerIndex: request.layerIndex,
+					width: 2,
+					height: 1,
+					pixels: pixels.buffer
+				});
+			});
+		}
 	}
 
 	terminate() {
@@ -132,5 +155,47 @@ describe('PreviewBuild cached slice', () => {
 		expect(worker.terminated).toBe(true);
 		expect(preview.status).toBe('idle');
 		await expect(preview.streamPngLayers(async () => {})).rejects.toThrow(/not ready/);
+	});
+});
+
+describe('PreviewBuild.layerPixels', () => {
+	it('fetches the cached bytes for one layer without rebuilding', async () => {
+		const worker = new StubSliceWorker();
+		const preview = new PreviewBuild(async () => worker as unknown as Worker);
+		preview.request(input());
+		await vi.waitFor(() => expect(preview.status).toBe('ready'));
+
+		const image = await preview.layerPixels(1);
+
+		expect(image).toEqual({ width: 2, height: 1, pixels: Uint8Array.of(1, 1) });
+		expect(worker.requests.filter((request) => request.type === 'build')).toHaveLength(1);
+	});
+
+	it('rejects an out-of-range layer index', async () => {
+		const worker = new StubSliceWorker();
+		const preview = new PreviewBuild(async () => worker as unknown as Worker);
+		preview.request(input());
+		await vi.waitFor(() => expect(preview.status).toBe('ready'));
+
+		await expect(preview.layerPixels(5)).rejects.toThrow(/out of range/);
+	});
+
+	it('rejects once the cached slice is reset', async () => {
+		const worker = new StubSliceWorker();
+		const preview = new PreviewBuild(async () => worker as unknown as Worker);
+		preview.request(input());
+		await vi.waitFor(() => expect(preview.status).toBe('ready'));
+
+		const pending = preview.layerPixels(0);
+		preview.reset();
+
+		await expect(pending).rejects.toThrow(/not ready|no longer available/);
+	});
+
+	it('rejects immediately when the slice is not ready', async () => {
+		const worker = new StubSliceWorker();
+		const preview = new PreviewBuild(async () => worker as unknown as Worker);
+
+		await expect(preview.layerPixels(0)).rejects.toThrow(/not ready/);
 	});
 });

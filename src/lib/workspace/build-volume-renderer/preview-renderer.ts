@@ -1,4 +1,12 @@
-import { BufferAttribute, BufferGeometry, Mesh, MeshStandardMaterial, Scene } from 'three';
+import {
+	BufferAttribute,
+	BufferGeometry,
+	Mesh,
+	MeshStandardMaterial,
+	Plane,
+	Scene,
+	Vector3
+} from 'three';
 
 import { createBuildVolumeClippingPlanes } from './build-volume-scene';
 
@@ -11,6 +19,10 @@ export type PreviewMeshData = { positions: Float32Array; normals: Float32Array }
  */
 export class PreviewRenderer {
 	#scene: Scene;
+	// A 7th clipping plane for the CAT-scan cross-section: mutated in place (rather
+	// than rebuilding the `clippingPlanes` array) so toggling scan mode is cheap.
+	// At its default `+Infinity` constant it never clips anything (see `setScanClip`).
+	#scanClipPlane = new Plane(new Vector3(0, 0, -1), Number.POSITIVE_INFINITY);
 	#material = new MeshStandardMaterial({
 		color: 0xd8d2c6,
 		roughness: 0.85,
@@ -21,7 +33,7 @@ export class PreviewRenderer {
 		polygonOffset: true,
 		polygonOffsetFactor: -1,
 		polygonOffsetUnits: -1,
-		clippingPlanes: createBuildVolumeClippingPlanes('inside')
+		clippingPlanes: [...createBuildVolumeClippingPlanes('inside'), this.#scanClipPlane]
 	});
 	#mesh: Mesh | null = null;
 	#current: PreviewMeshData | null = null;
@@ -48,6 +60,11 @@ export class PreviewRenderer {
 
 	setVisible(visible: boolean) {
 		if (this.#mesh) this.#mesh.visible = visible;
+	}
+
+	/** Discards everything above `zMm` (the CAT-scan cut); `null` clips nothing. */
+	setScanClip(zMm: number | null) {
+		this.#scanClipPlane.constant = zMm ?? Number.POSITIVE_INFINITY;
 	}
 
 	dispose() {

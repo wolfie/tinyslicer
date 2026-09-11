@@ -11,6 +11,7 @@ import type { SupportPlan } from './supports';
 export type PreviewBuildStatus = 'idle' | 'building' | 'ready' | 'error';
 
 export type PreviewMeshData = { positions: Float32Array; normals: Float32Array };
+export type SliceLayerImage = { width: number; height: number; pixels: Uint8Array };
 export type SliceStreamResult = { totalLayers: number; volumeCubicMm: number };
 export type SliceLayerWriter = (
 	layerNumber: number,
@@ -41,6 +42,11 @@ type PendingSliceStream = {
 	reject: (error: Error) => void;
 	signal?: AbortSignal;
 	onAbort?: () => void;
+};
+
+type PendingLayerPixels = {
+	resolve: (image: SliceLayerImage) => void;
+	reject: (error: Error) => void;
 };
 
 function signatureFor(input: PreviewBuildInput): string {
@@ -92,6 +98,10 @@ export class PreviewBuild implements SliceLayerSource {
 	#requestId = 0;
 	#exportId = 0;
 	#pendingStream: PendingSliceStream | null = null;
+	#layerPixelsRequestId = 0;
+	// Plain object, not `Map`: purely internal request bookkeeping, never read
+	// reactively, so `SvelteMap` would add pointless overhead.
+	#pendingLayerPixels: Record<number, PendingLayerPixels> = {};
 	#createWorker: () => Promise<Worker>;
 
 	constructor(createWorker: () => Promise<Worker> = defaultCreateWorker) {
@@ -137,6 +147,27 @@ export class PreviewBuild implements SliceLayerSource {
 			}
 			this.#pendingStream = pending;
 			this.#worker?.postMessage({ type: 'export-start', id: this.#requestId, exportId });
+		});
+	}
+
+	/**
+	 * Fetches one layer's cached grayscale bytes — the same bytes
+	 * {@link streamPngLayers} would PNG-encode for that layer — for the scan-plane
+	 * preview. Requests aren't cancellable: a caller that fires several of these in
+	 * quick succession (dragging the scan plane) should track its own "latest
+	 * request wins" token and ignore a resolved promise that isn't the newest.
+	 */
+	layerPixels(layerIndex: number): Promise<SliceLayerImage> {
+		if (this.status !== 'ready' || !this.#worker) {
+			return Promise.reject(new Error('The cached slice is not ready.'));
+		}
+
+		const requestId = ++this.#layerPixelsRequestId;
+		const worker = this.#worker;
+		const buildId = this.#requestId;
+		return new Promise<SliceLayerImage>((resolve, reject) => {
+			this.#pendingLayerPixels[requestId] = { resolve, reject };
+			worker.postMessage({ type: 'layer-pixels', id: buildId, requestId, layerIndex });
 		});
 	}
 
@@ -205,6 +236,10 @@ export class PreviewBuild implements SliceLayerSource {
 			this.#handleExportMessage(message);
 			return;
 		}
+		if ('requestId' in message) {
+			this.#handleLayerPixelsMessage(message);
+			return;
+		}
 
 		if (message.type === 'progress') {
 			this.progress = message.total > 0 ? message.completed / message.total : 0;
@@ -223,6 +258,21 @@ export class PreviewBuild implements SliceLayerSource {
 		this.watertight = message.meshIsWatertightAtPixelSamples;
 		this.progress = 1;
 		this.status = 'ready';
+	}
+
+	#handleLayerPixelsMessage(message: Extract<PreviewMeshWorkerMessage, { requestId: number }>) {
+		const pending = this.#pendingLayerPixels[message.requestId];
+		if (!pending) return;
+		delete this.#pendingLayerPixels[message.requestId];
+		if (message.type === 'layer-pixels-error') {
+			pending.reject(new Error(message.message));
+			return;
+		}
+		pending.resolve({
+			width: message.width,
+			height: message.height,
+			pixels: new Uint8Array(message.pixels)
+		});
 	}
 
 	#handleExportMessage(message: Extract<PreviewMeshWorkerMessage, { exportId: number }>) {
@@ -290,6 +340,10 @@ export class PreviewBuild implements SliceLayerSource {
 
 	#stopWorker() {
 		this.#rejectStream(new Error('The cached slice is no longer available.'));
+		for (const pending of Object.values(this.#pendingLayerPixels)) {
+			pending.reject(new Error('The cached slice is no longer available.'));
+		}
+		this.#pendingLayerPixels = {};
 		if (!this.#worker) return;
 		this.#worker.onmessage = null;
 		this.#worker.onerror = null;

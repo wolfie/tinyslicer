@@ -155,6 +155,11 @@
 				previewZHeightMm={workspace.preview.zHeightMm}
 				previewWatertight={workspace.preview.watertight}
 				previewError={workspace.preview.error}
+				scanEnabled={workspace.scan.enabled}
+				scanZMm={workspace.scan.zMm}
+				scanLayerIndex={workspace.scan.layerIndex}
+				scanImage={workspace.scan.image}
+				scanLoading={workspace.scan.loading}
 				onTranslationChange={workspace.scene.setTranslation}
 				onRotationChange={workspace.scene.setRotation}
 				onScaleChange={workspace.scene.setScale}
@@ -164,6 +169,8 @@
 				onBackToPrepare={() => requestStep('prepare')}
 				onBackToSupports={() => requestStep('supports')}
 				onEnterExport={() => requestStep('export')}
+				onScanEnabledChange={(enabled) => workspace.scan.setEnabled(enabled)}
+				onScanZChange={(zMm) => workspace.scan.setZMm(zMm)}
 			/>
 		{/if}
 

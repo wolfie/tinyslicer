@@ -15,6 +15,8 @@ import { ModelInteractionController } from './model-interaction';
 import { PreviewRenderer } from './preview-renderer';
 import { RaftRenderer } from './raft-renderer';
 import { RenderedModel } from './rendered-model';
+import { SliceScanInteractionController } from './slice-scan-interaction';
+import { SliceScanRenderer } from './slice-scan-renderer';
 import { SupportMarkerRenderer } from './support-marker-renderer';
 import { SupportRenderer } from './support-renderer';
 import { TransformGizmo } from './transform-gizmo';
@@ -40,8 +42,10 @@ export class BuildVolumeViewport {
 	#rafts: RaftRenderer;
 	#supportMarkers: SupportMarkerRenderer;
 	#preview: PreviewRenderer;
+	#scan: SliceScanRenderer;
 	#gizmo: TransformGizmo;
 	#interactions: ModelInteractionController;
+	#scanInteraction: SliceScanInteractionController;
 	#pendingState: BuildVolumeRenderState | null = null;
 	#animationFrame: number | null = null;
 	#width = 0;
@@ -66,6 +70,7 @@ export class BuildVolumeViewport {
 		this.#rafts = new RaftRenderer(this.#scene);
 		this.#supportMarkers = new SupportMarkerRenderer(this.#scene);
 		this.#preview = new PreviewRenderer(this.#scene);
+		this.#scan = new SliceScanRenderer(this.#scene);
 		this.#gizmo = new TransformGizmo(this.#scene);
 		this.#interactions = new ModelInteractionController(
 			canvas,
@@ -74,6 +79,7 @@ export class BuildVolumeViewport {
 			this.#gizmo,
 			this.#supportMarkers
 		);
+		this.#scanInteraction = new SliceScanInteractionController(canvas, this.#camera);
 
 		this.#scene.add(new HemisphereLight(0xddeeff, 0x152536, 1.65));
 
@@ -124,6 +130,24 @@ export class BuildVolumeViewport {
 		return this.#interactions.stopModelInteraction(event);
 	}
 
+	startScanDrag(
+		event: PointerEvent,
+		zMm: number,
+		zHeightMm: number,
+		onZChange: (zMm: number) => void
+	): boolean {
+		if (!this.#scan.mesh.visible) return false;
+		return this.#scanInteraction.start(event, this.#scan.mesh, zMm, zHeightMm, onZChange);
+	}
+
+	updateScanDrag(event: PointerEvent): boolean {
+		return this.#scanInteraction.update(event);
+	}
+
+	stopScanDrag(event: PointerEvent): boolean {
+		return this.#scanInteraction.stop(event);
+	}
+
 	schedule(state: BuildVolumeRenderState) {
 		this.#pendingState = state;
 		if (this.#animationFrame !== null) return;
@@ -139,11 +163,13 @@ export class BuildVolumeViewport {
 	dispose() {
 		if (this.#animationFrame !== null) cancelAnimationFrame(this.#animationFrame);
 		this.#interactions.cancel();
+		this.#scanInteraction.cancel();
 		this.#model.dispose();
 		this.#supports.dispose();
 		this.#rafts.dispose();
 		this.#supportMarkers.dispose();
 		this.#preview.dispose();
+		this.#scan.dispose();
 		this.#gizmo.dispose();
 		this.#scene.remove(this.#buildVolumeScene.group);
 		this.#buildVolumeScene.dispose();
@@ -159,6 +185,10 @@ export class BuildVolumeViewport {
 		this.#model.setSupportRiskVisible(state.interactionMode === 'place-supports');
 		this.#model.setVisible(!previewing);
 		this.#interactions.setInteractionMode(state.interactionMode);
+		// An active scan drag can outlive scan mode being toggled off (or the preview
+		// resetting) mid-gesture; without this the pointer capture would leak until
+		// the caller happens to route another pointer event through updateScanDrag.
+		if (!previewing || state.scanZMm === null) this.#scanInteraction.cancel();
 		this.#supports.setStructures(state.supportStructures);
 		this.#supports.setVisible(!previewing);
 		this.#rafts.setIslands(state.raftIslands);
@@ -167,6 +197,9 @@ export class BuildVolumeViewport {
 		this.#supportMarkers.setVisible(state.interactionMode === 'place-supports');
 		this.#preview.setMesh(state.previewMesh);
 		this.#preview.setVisible(previewing);
+		this.#preview.setScanClip(previewing ? state.scanZMm : null);
+		this.#scan.setImage(previewing ? state.scanImage : null);
+		if (state.scanZMm !== null) this.#scan.setZ(state.scanZMm);
 		this.#buildVolumeScene.setSupportPlateMarginVisible(
 			state.interactionMode === 'transform-model'
 		);

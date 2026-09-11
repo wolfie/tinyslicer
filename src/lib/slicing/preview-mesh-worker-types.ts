@@ -34,11 +34,21 @@ export type PreviewMeshExportCancelRequest = {
 	exportId: number;
 };
 
+/** Requests the same cached 8-bit layer bytes `encodeGrayscalePng` would encode, for
+ *  the scan-plane preview. `requestId` (not `exportId`) tracks this one-off reply. */
+export type PreviewMeshLayerPixelsRequest = {
+	type: 'layer-pixels';
+	id: number;
+	requestId: number;
+	layerIndex: number;
+};
+
 export type PreviewMeshWorkerRequest =
 	| PreviewMeshBuildRequest
 	| PreviewMeshExportStartRequest
 	| PreviewMeshExportContinueRequest
-	| PreviewMeshExportCancelRequest;
+	| PreviewMeshExportCancelRequest
+	| PreviewMeshLayerPixelsRequest;
 
 export type PreviewMeshProgressMessage = {
 	type: 'progress';
@@ -83,8 +93,21 @@ export type PreviewMeshExportMessage =
 	  }
 	| { type: 'export-error'; id: number; exportId: number; message: string };
 
+export type PreviewMeshLayerPixelsMessage =
+	| {
+			type: 'layer-pixels';
+			id: number;
+			requestId: number;
+			layerIndex: number;
+			width: number;
+			height: number;
+			pixels: ArrayBuffer;
+	  }
+	| { type: 'layer-pixels-error'; id: number; requestId: number; message: string };
+
 export type PreviewMeshWorkerMessage =
 	| PreviewMeshProgressMessage
 	| PreviewMeshResultMessage
 	| PreviewMeshErrorMessage
-	| PreviewMeshExportMessage;
+	| PreviewMeshExportMessage
+	| PreviewMeshLayerPixelsMessage;

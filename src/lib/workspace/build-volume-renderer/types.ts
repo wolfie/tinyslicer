@@ -33,4 +33,7 @@ export type BuildVolumeRenderState = {
 	supportStructures: readonly SupportStructure[];
 	raftIslands: readonly RaftIsland[];
 	previewMesh: { positions: Float32Array; normals: Float32Array } | null;
+	/** Z (mm) of the CAT-scan cross-section, or `null` when scan mode is off. */
+	scanZMm: number | null;
+	scanImage: { width: number; height: number; pixels: Uint8Array } | null;
 };

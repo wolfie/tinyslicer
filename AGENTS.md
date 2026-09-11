@@ -6,7 +6,7 @@ This file provides guidance to coding agents working with code in this repositor
 
 TinySlicer is a **browser-only resin slicer** for the fixed "TinyMaker" printer profile. It imports one STL, lets the user place and rotate it, adds supports, previews the reconstructed print, and exports a TinyMaker print-project folder (or an equivalent ZIP). Everything — parsing, rendering, slicing, PNG/G-code generation — runs client-side with no backend and no network access after assets load. `docs/slicer-spec.md` is the authoritative product/format spec (§7.3 covers rafts, §10 the export format); `docs/*research*.md` and `docs/support-density*.md` are the reasoning behind the support algorithms.
 
-All four workflow steps (`prepare`, `supports`, `preview`, `export`) are implemented. Note the built `preview` step is a **voxel-reconstruction solid mesh** of model + supports, not the spec §9 per-layer mask slider — that slider is still unbuilt.
+All four workflow steps (`prepare`, `supports`, `preview`, `export`) are implemented. The built `preview` step is a **voxel-reconstruction solid mesh** of model + supports, with an in-viewport "CAT-scan" cross-section (`SliceScanState`, `slice-scan-*` in `build-volume-renderer/`): a draggable clip plane textured with the exact cached layer bytes the exporter PNG-encodes. This is a different interaction than the spec §9 per-layer mask slider (a flat, separate 2D view) — §9's literal slider/numeric-input UI is still unbuilt, though the CAT-scan view covers the same "inspect any layer's mask" need.
 
 ## Commands
 

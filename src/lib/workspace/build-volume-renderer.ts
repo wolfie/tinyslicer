@@ -110,3 +110,25 @@ export function updateModelTransform(event: PointerEvent): boolean {
 export function stopModelTransform(event: PointerEvent): boolean {
 	return getViewport(event.currentTarget as HTMLCanvasElement).stopModelInteraction(event);
 }
+
+export function startScanDrag(
+	event: PointerEvent,
+	zMm: number,
+	zHeightMm: number,
+	onZChange: (zMm: number) => void
+): boolean {
+	return getViewport(event.currentTarget as HTMLCanvasElement).startScanDrag(
+		event,
+		zMm,
+		zHeightMm,
+		onZChange
+	);
+}
+
+export function updateScanDrag(event: PointerEvent): boolean {
+	return getViewport(event.currentTarget as HTMLCanvasElement).updateScanDrag(event);
+}
+
+export function stopScanDrag(event: PointerEvent): boolean {
+	return getViewport(event.currentTarget as HTMLCanvasElement).stopScanDrag(event);
+}

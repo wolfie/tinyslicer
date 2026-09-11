@@ -2,6 +2,7 @@ import type { BuildVolumeInteractionMode } from './build-volume-renderer/types';
 import type { ProjectExport } from './export-state.svelte';
 import type { PreviewBuild } from './preview-state.svelte';
 import type { SceneState } from './scene-state.svelte';
+import type { SliceScanState } from './slice-scan-state.svelte';
 import type { ModelSurfaceHit } from './supports';
 import type { SupportsState } from './supports-state.svelte';
 
@@ -27,17 +28,20 @@ export class WorkflowState {
 	#scene: SceneState;
 	#supports: SupportsState;
 	#preview: PreviewBuild;
+	#scan: SliceScanState;
 	#export: ProjectExport;
 
 	constructor(
 		scene: SceneState,
 		supports: SupportsState,
 		preview: PreviewBuild,
+		scan: SliceScanState,
 		exportState: ProjectExport
 	) {
 		this.#scene = scene;
 		this.#supports = supports;
 		this.#preview = preview;
+		this.#scan = scan;
 		this.#export = exportState;
 	}
 
@@ -101,6 +105,7 @@ export class WorkflowState {
 	confirmDiscard = () => {
 		this.#supports.reset();
 		this.#preview.reset();
+		this.#scan.reset();
 		this.discardDialogOpen = false;
 		this.#setStep('prepare');
 	};
@@ -108,6 +113,7 @@ export class WorkflowState {
 	/** Wired by the composition root whenever manual or automatic supports change. */
 	onSupportSetChanged() {
 		this.#preview.reset();
+		this.#scan.reset();
 		if (this.step === 'preview') this.#requestPreview();
 	}
 
