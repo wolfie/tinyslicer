@@ -11,6 +11,9 @@ import {
 import { raftMeshData } from '$lib/supports/raft-geometry';
 import type { RaftIsland } from '$lib/supports/raft-plan';
 
+const RAFT_OPAQUE_OPACITY = 1;
+const RAFT_PLACEMENT_OPACITY = 0.75;
+
 export class RaftRenderer {
 	#scene: Scene;
 	#group = new Group();
@@ -24,6 +27,7 @@ export class RaftRenderer {
 	});
 	#meshes = new Map<string, Mesh<BufferGeometry, MeshStandardMaterial>>();
 	#currentIslands: readonly RaftIsland[] = [];
+	#translucent = false;
 
 	constructor(scene: Scene) {
 		this.#scene = scene;
@@ -32,6 +36,15 @@ export class RaftRenderer {
 
 	setVisible(visible: boolean) {
 		this.#group.visible = visible;
+	}
+
+	setTranslucent(translucent: boolean) {
+		if (translucent === this.#translucent) return;
+		this.#translucent = translucent;
+		this.#material.transparent = translucent;
+		this.#material.opacity = translucent ? RAFT_PLACEMENT_OPACITY : RAFT_OPAQUE_OPACITY;
+		this.#material.depthWrite = !translucent;
+		this.#material.needsUpdate = true;
 	}
 
 	setIslands(islands: readonly RaftIsland[]) {

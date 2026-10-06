@@ -12,6 +12,8 @@ import {
 import type { SupportStructure, SupportStructurePart } from '../supports';
 
 const CYLINDER_AXIS = new Vector3(0, 1, 0);
+const SUPPORT_OPAQUE_OPACITY = 1;
+const SUPPORT_PLACEMENT_OPACITY = 0.75;
 
 export class SupportRenderer {
 	#scene: Scene;
@@ -26,6 +28,7 @@ export class SupportRenderer {
 	#geometryCache = new Map<string, BufferGeometry>();
 	#structureGroups = new Map<string, Group>();
 	#currentStructures: readonly SupportStructure[] = [];
+	#translucent = false;
 
 	constructor(scene: Scene) {
 		this.#scene = scene;
@@ -34,6 +37,15 @@ export class SupportRenderer {
 
 	setVisible(visible: boolean) {
 		this.#group.visible = visible;
+	}
+
+	setTranslucent(translucent: boolean) {
+		if (translucent === this.#translucent) return;
+		this.#translucent = translucent;
+		this.#material.transparent = translucent;
+		this.#material.opacity = translucent ? SUPPORT_PLACEMENT_OPACITY : SUPPORT_OPAQUE_OPACITY;
+		this.#material.depthWrite = !translucent;
+		this.#material.needsUpdate = true;
 	}
 
 	setStructures(structures: readonly SupportStructure[]) {

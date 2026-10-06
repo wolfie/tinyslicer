@@ -190,8 +190,10 @@ export class BuildVolumeViewport {
 		// the caller happens to route another pointer event through updateScanDrag.
 		if (!previewing || state.scanZMm === null) this.#scanInteraction.cancel();
 		this.#supports.setStructures(state.supportStructures);
+		this.#supports.setTranslucent(state.interactionMode === 'place-supports');
 		this.#supports.setVisible(!previewing);
 		this.#rafts.setIslands(state.raftIslands);
+		this.#rafts.setTranslucent(state.interactionMode === 'place-supports');
 		this.#rafts.setVisible(!previewing);
 		this.#supportMarkers.setPoints(state.supportPoints);
 		this.#supportMarkers.setVisible(state.interactionMode === 'place-supports');
