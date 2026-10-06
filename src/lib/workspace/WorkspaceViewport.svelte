@@ -52,6 +52,7 @@
 		previewMesh: PreviewMeshData | null;
 		previewLayerCount: number;
 		previewZHeightMm: number;
+		previewVolumeCubicMm: number;
 		previewWatertight: boolean;
 		previewError: string | null;
 		scanEnabled?: boolean;
@@ -93,6 +94,7 @@
 		previewMesh,
 		previewLayerCount,
 		previewZHeightMm,
+		previewVolumeCubicMm,
 		previewWatertight,
 		previewError,
 		scanEnabled = false,
@@ -159,6 +161,15 @@
 		if (!transformedModelBounds) return;
 		const direction = firstBuildVolumeOverflowDirection(transformedModelBounds);
 		if (direction) camera.orbitToward(direction);
+	}
+
+	function formatResinMillilitres(volumeCubicMm: number): string {
+		const millilitres = volumeCubicMm / 1000;
+		if (!Number.isFinite(millilitres) || millilitres <= 0) return '0';
+		if (millilitres < 0.01) return '<0.01';
+		return millilitres.toLocaleString(undefined, {
+			maximumFractionDigits: millilitres < 10 ? 2 : millilitres < 100 ? 1 : 0
+		});
 	}
 
 	function handlePointerDown(event: PointerEvent) {
@@ -485,7 +496,8 @@
 						role="status"
 					>
 						<span
-							>{previewLayerCount} layers · Z 0–{previewZHeightMm.toFixed(2)} mm · voxel-accurate</span
+							>{formatResinMillilitres(previewVolumeCubicMm)} mL resin · {previewLayerCount} layers ·
+							Z 0–{previewZHeightMm.toFixed(2)} mm · voxel-accurate</span
 						>
 						{#if !previewWatertight}
 							<span class="leading-[1.35] font-medium text-amber-soft"

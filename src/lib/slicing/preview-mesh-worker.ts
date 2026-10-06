@@ -57,6 +57,7 @@ function build(request: PreviewMeshBuildRequest) {
 				triangleCount: result.triangleCount,
 				layerCount: result.layerCount,
 				zHeightMm: result.zHeightMm,
+				volumeCubicMm: result.volumeCubicMm,
 				meshIsWatertightAtPixelSamples: result.meshIsWatertightAtPixelSamples
 			},
 			[result.positions.buffer, result.normals.buffer]

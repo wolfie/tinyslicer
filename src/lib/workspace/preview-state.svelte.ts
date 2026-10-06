@@ -91,6 +91,7 @@ export class PreviewBuild implements SliceLayerSource {
 	mesh = $state.raw<PreviewMeshData | null>(null);
 	layerCount = $state(0);
 	zHeightMm = $state(0);
+	volumeCubicMm = $state(0);
 	watertight = $state(true);
 
 	#signature: string | null = null;
@@ -181,6 +182,7 @@ export class PreviewBuild implements SliceLayerSource {
 		this.mesh = null;
 		this.layerCount = 0;
 		this.zHeightMm = 0;
+		this.volumeCubicMm = 0;
 		this.watertight = true;
 	}
 
@@ -255,6 +257,7 @@ export class PreviewBuild implements SliceLayerSource {
 		this.mesh = { positions: message.positions, normals: message.normals };
 		this.layerCount = message.layerCount;
 		this.zHeightMm = message.zHeightMm;
+		this.volumeCubicMm = message.volumeCubicMm;
 		this.watertight = message.meshIsWatertightAtPixelSamples;
 		this.progress = 1;
 		this.status = 'ready';

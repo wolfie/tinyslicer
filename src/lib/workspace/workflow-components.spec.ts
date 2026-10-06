@@ -17,6 +17,7 @@ const previewProps = {
 	previewMesh: null,
 	previewLayerCount: 0,
 	previewZHeightMm: 0,
+	previewVolumeCubicMm: 0,
 	previewWatertight: true,
 	previewError: null,
 	onEnterPreview: noop,
@@ -232,6 +233,38 @@ describe('workflow UI', () => {
 		expect(body).toContain('Reconstructing sliced result · 50%');
 		expect(body).not.toContain('Add supports');
 		expect(body).not.toContain('Preview layers');
+	});
+
+	it('shows estimated resin volume in the sliced-preview status', () => {
+		const model = modelWithinBuildVolume();
+		const { body } = render(WorkspaceViewport, {
+			props: {
+				model,
+				modelTranslation: { x: 0, y: 0, z: 0 },
+				modelRotation: { x: 0, y: 0, z: 0, w: 1 },
+				transformedModelBounds: model.bounds,
+				modelOutsideBuildVolume: false,
+				modelOverlapsSupportMargin: false,
+				canEnterSupports: true,
+				interactionMode: 'readonly',
+				supportPointCount: 0,
+				supportPoints: [],
+				supportStructures: [],
+				onTranslationChange: noop,
+				onRotationChange: noop,
+				onSupportPointPlaced: noop,
+				onEnterSupports: noop,
+				onBackToPrepare: noop,
+				...previewProps,
+				previewStatus: 'ready',
+				previewLayerCount: 12,
+				previewZHeightMm: 0.6,
+				previewVolumeCubicMm: 1234
+			}
+		});
+
+		expect(body).toContain('1.23 mL resin');
+		expect(body).toContain('12 layers');
 	});
 
 	it('only renders the destructive dialog while confirmation is pending', () => {

@@ -153,6 +153,7 @@
 				previewMesh={workspace.preview.mesh}
 				previewLayerCount={workspace.preview.layerCount}
 				previewZHeightMm={workspace.preview.zHeightMm}
+				previewVolumeCubicMm={workspace.preview.volumeCubicMm}
 				previewWatertight={workspace.preview.watertight}
 				previewError={workspace.preview.error}
 				scanEnabled={workspace.scan.enabled}

@@ -65,6 +65,7 @@ export type PreviewMeshResultMessage = {
 	triangleCount: number;
 	layerCount: number;
 	zHeightMm: number;
+	volumeCubicMm: number;
 	meshIsWatertightAtPixelSamples: boolean;
 };
 

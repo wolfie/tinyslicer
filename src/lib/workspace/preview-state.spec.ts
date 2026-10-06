@@ -25,6 +25,7 @@ class StubSliceWorker {
 					triangleCount: 1,
 					layerCount: 2,
 					zHeightMm: 0.1,
+					volumeCubicMm: 12.5,
 					meshIsWatertightAtPixelSamples: true
 				})
 			);
@@ -128,6 +129,7 @@ describe('PreviewBuild cached slice', () => {
 		await vi.waitFor(() => expect(preview.status).toBe('ready'));
 
 		const firstLayers: number[] = [];
+		expect(preview.volumeCubicMm).toBe(12.5);
 		await expect(
 			preview.streamPngLayers(async (layerNumber) => {
 				firstLayers.push(layerNumber);
@@ -154,6 +156,7 @@ describe('PreviewBuild cached slice', () => {
 
 		expect(worker.terminated).toBe(true);
 		expect(preview.status).toBe('idle');
+		expect(preview.volumeCubicMm).toBe(0);
 		await expect(preview.streamPngLayers(async () => {})).rejects.toThrow(/not ready/);
 	});
 });

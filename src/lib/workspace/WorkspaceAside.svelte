@@ -24,6 +24,15 @@
 		return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 	}
 
+	function formatResinMillilitres(volumeCubicMm: number): string {
+		const millilitres = volumeCubicMm / 1000;
+		if (!Number.isFinite(millilitres) || millilitres <= 0) return '—';
+		if (millilitres < 0.01) return '<0.01';
+		return millilitres.toLocaleString(undefined, {
+			maximumFractionDigits: millilitres < 10 ? 2 : millilitres < 100 ? 1 : 0
+		});
+	}
+
 	function formatTranslation(value: number): string {
 		const rounded = Math.abs(value) < 0.005 ? 0 : value;
 		return `${rounded > 0 ? '+' : ''}${formatMillimetres(rounded)}`;
@@ -203,6 +212,9 @@
 								preview.zHeightMm
 							)} mm</small
 						>
+						<div class="mt-1 text-[10px] font-semibold text-[#8ecba7]">
+							Approx. resin {formatResinMillilitres(preview.volumeCubicMm)} mL
+						</div>
 					</div>
 				{:else if workflow.step === 'export'}
 					<div class="rounded-lg border border-blue/25 bg-blue/10 p-3">
