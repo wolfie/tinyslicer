@@ -95,8 +95,14 @@ export function startModelTransform(
 	);
 }
 
-export function pickModelSurface(event: PointerEvent): ModelSurfaceHit | null {
-	return getViewport(event.currentTarget as HTMLCanvasElement).pickModelSurface(event);
+export function pickModelSurface(
+	event: PointerEvent,
+	allowNonPrimary = false
+): ModelSurfaceHit | null {
+	return getViewport(event.currentTarget as HTMLCanvasElement).pickModelSurface(
+		event,
+		allowNonPrimary
+	);
 }
 
 export function pickSupportPoint(event: PointerEvent): string | null {

@@ -31,6 +31,7 @@ import type {
 const BUILD_VOLUME = TINYMAKER_PROFILE.buildVolume;
 const CAMERA_TARGET = new Vector3(BUILD_VOLUME.x / 2, BUILD_VOLUME.y / 2, BUILD_VOLUME.z * 0.42);
 const CAMERA_DISTANCE = 112;
+const SUPPORTS_ZOOM_FACTOR = 1.7;
 
 export class BuildVolumeViewport {
 	#renderer: WebGLRenderer;
@@ -114,8 +115,8 @@ export class BuildVolumeViewport {
 		);
 	}
 
-	pickModelSurface(event: PointerEvent): ModelSurfaceHit | null {
-		return this.#interactions.pickModelSurface(event);
+	pickModelSurface(event: PointerEvent, allowNonPrimary = false): ModelSurfaceHit | null {
+		return this.#interactions.pickModelSurface(event, allowNonPrimary);
 	}
 
 	pickSupportPoint(event: PointerEvent): string | null {
@@ -206,12 +207,47 @@ export class BuildVolumeViewport {
 			state.interactionMode === 'transform-model'
 		);
 
-		this.#camera.position.set(
-			CAMERA_TARGET.x + CAMERA_DISTANCE * Math.cos(state.cameraPitch) * Math.cos(state.cameraYaw),
-			CAMERA_TARGET.y + CAMERA_DISTANCE * Math.cos(state.cameraPitch) * Math.sin(state.cameraYaw),
-			CAMERA_TARGET.z + CAMERA_DISTANCE * Math.sin(state.cameraPitch)
+		const cameraDistance =
+			state.interactionMode === 'place-supports' && state.supportsZoomed
+				? CAMERA_DISTANCE / SUPPORTS_ZOOM_FACTOR
+				: CAMERA_DISTANCE;
+		const cameraDirection = new Vector3(
+			Math.cos(state.cameraPitch) * Math.cos(state.cameraYaw),
+			Math.cos(state.cameraPitch) * Math.sin(state.cameraYaw),
+			Math.sin(state.cameraPitch)
 		);
-		this.#camera.lookAt(CAMERA_TARGET);
+		const cameraTarget = CAMERA_TARGET.clone();
+		this.#camera.position.copy(cameraTarget).addScaledVector(cameraDirection, cameraDistance);
+		this.#camera.lookAt(cameraTarget);
+
+		if (
+			state.interactionMode === 'place-supports' &&
+			state.supportsZoomed &&
+			state.supportsZoomFocus
+		) {
+			this.#camera.updateMatrixWorld(true);
+			const focus = this.#camera.worldToLocal(
+				new Vector3(
+					state.supportsZoomFocus.position.x,
+					state.supportsZoomFocus.position.y,
+					state.supportsZoomFocus.position.z
+				)
+			);
+			const focusDepth = -focus.z;
+			if (focusDepth > 0) {
+				const halfFovTangent = Math.tan((this.#camera.fov * Math.PI) / 360);
+				const desiredX =
+					state.supportsZoomFocus.x * focusDepth * halfFovTangent * this.#camera.aspect;
+				const desiredY = state.supportsZoomFocus.y * focusDepth * halfFovTangent;
+				const right = new Vector3(1, 0, 0).applyQuaternion(this.#camera.quaternion);
+				const up = new Vector3(0, 1, 0).applyQuaternion(this.#camera.quaternion);
+				cameraTarget
+					.addScaledVector(right, focus.x - desiredX)
+					.addScaledVector(up, focus.y - desiredY);
+				this.#camera.position.copy(cameraTarget).addScaledVector(cameraDirection, cameraDistance);
+				this.#camera.lookAt(cameraTarget);
+			}
+		}
 		this.#gizmo.update({
 			model: state.model,
 			translation: state.modelTranslation,

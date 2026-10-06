@@ -225,9 +225,13 @@ export class ModelInteractionController {
 		return true;
 	}
 
-	pickModelSurface(event: PointerEvent): ModelSurfaceHit | null {
+	pickModelSurface(event: PointerEvent, allowNonPrimary = false): ModelSurfaceHit | null {
 		const modelMesh = this.#model.mesh;
-		if (this.#interactionMode !== 'place-supports' || event.button !== 0 || !modelMesh) {
+		if (
+			this.#interactionMode !== 'place-supports' ||
+			(!allowNonPrimary && event.button !== 0) ||
+			!modelMesh
+		) {
 			return null;
 		}
 

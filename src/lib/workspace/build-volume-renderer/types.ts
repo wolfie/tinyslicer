@@ -21,6 +21,8 @@ export type BuildVolumeInteractionMode = 'transform-model' | 'place-supports' | 
 export type BuildVolumeRenderState = {
 	cameraYaw: number;
 	cameraPitch: number;
+	supportsZoomed?: boolean;
+	supportsZoomFocus?: { position: Point3; x: number; y: number } | null;
 	width: number;
 	height: number;
 	dpr: number;

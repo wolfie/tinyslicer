@@ -21,7 +21,7 @@
 	} from './build-volume-renderer';
 	import { CanvasMetrics } from './canvas-metrics.svelte';
 	import { OrbitCamera } from './orbit-camera.svelte';
-	import type { Bounds3, ImportedStlModel } from './stl-importer';
+	import type { Bounds3, ImportedStlModel, Point3 } from './stl-importer';
 	import type { ModelSurfaceHit, SupportPoint, SupportStructure } from './supports';
 	import type { RaftIsland } from '$lib/supports/raft-plan';
 	import type { AutoSupportBuildStatus } from './auto-support-state.svelte';
@@ -119,6 +119,8 @@
 	const canvasMetrics = new CanvasMetrics();
 	let modelInteraction = $state<ModelInteraction | null>(null);
 	let scanDragging = $state(false);
+	let supportsZoomed = $state(false);
+	let supportsZoomFocus = $state<{ position: Point3; x: number; y: number } | null>(null);
 	let placingSupports = $derived(interactionMode === 'place-supports');
 	let previewing = $derived(interactionMode === 'readonly');
 	let previewPercent = $derived(Math.round(previewProgress * 100));
@@ -138,6 +140,13 @@
 	// An active drag can outlive scan mode being toggled off mid-gesture.
 	$effect(() => {
 		if (!scanEnabled) scanDragging = false;
+	});
+
+	$effect(() => {
+		if (!placingSupports) {
+			supportsZoomed = false;
+			supportsZoomFocus = null;
+		}
 	});
 
 	const BACK_BUTTON_CLASS =
@@ -173,6 +182,27 @@
 	}
 
 	function handlePointerDown(event: PointerEvent) {
+		if (placingSupports && event.button === 2) {
+			event.preventDefault();
+			if (supportsZoomed) {
+				supportsZoomed = false;
+				supportsZoomFocus = null;
+			} else {
+				const hit = pickModelSurface(event, true);
+				const canvas = event.currentTarget as HTMLCanvasElement;
+				const bounds = canvas.getBoundingClientRect();
+				supportsZoomFocus = hit
+					? {
+							position: hit.position,
+							x: ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+							y: 1 - ((event.clientY - bounds.top) / bounds.height) * 2
+						}
+					: null;
+				supportsZoomed = true;
+			}
+			return;
+		}
+
 		if (placingSupports && event.button === 0) {
 			const hit = pickModelSurface(event);
 			if (hit) {
@@ -266,6 +296,8 @@
 			{@attach paintBuildVolume({
 				cameraYaw: camera.yaw,
 				cameraPitch: camera.pitch,
+				supportsZoomed,
+				supportsZoomFocus,
 				width: canvasMetrics.width,
 				height: canvasMetrics.height,
 				dpr: canvasMetrics.dpr,
@@ -286,7 +318,8 @@
 			onpointerup={handlePointerEnd}
 			onpointercancel={handlePointerEnd}
 			onauxclick={(event) => event.preventDefault()}
-			aria-label={`Interactive 3D view of the ${TINYMAKER_PROFILE.buildVolume.x} by ${TINYMAKER_PROFILE.buildVolume.y} by ${TINYMAKER_PROFILE.buildVolume.z} millimetre ${TINYMAKER_PROFILE.name} build volume${model ? ` containing ${model.name}` : ''}. ${placingSupports ? 'Click the model to place a support point. ' : model ? `Drag the model to move it, drag an upper corner to scale it, click an arrow to nudge it, or drag a colored ring to rotate it in ${ROTATION_SNAP_DEGREES} degree steps. ` : ''}Drag with the middle mouse button to orbit.`}
+			oncontextmenu={(event) => event.preventDefault()}
+			aria-label={`Interactive 3D view of the ${TINYMAKER_PROFILE.buildVolume.x} by ${TINYMAKER_PROFILE.buildVolume.y} by ${TINYMAKER_PROFILE.buildVolume.z} millimetre ${TINYMAKER_PROFILE.name} build volume${model ? ` containing ${model.name}` : ''}. ${placingSupports ? 'Click the model to place a support point. Right-click to toggle precision zoom. ' : model ? `Drag the model to move it, drag an upper corner to scale it, click an arrow to nudge it, or drag a colored ring to rotate it in ${ROTATION_SNAP_DEGREES} degree steps. ` : ''}Drag with the middle mouse button to orbit.`}
 		></canvas>
 		<div class="absolute top-4 left-4 flex gap-2" aria-label="Axis directions">
 			<span
@@ -325,7 +358,15 @@
 		</div>
 		{#if placingSupports && model}
 			<div
-				class="{HUD_TAG} pointer-events-none top-[52px] right-4 border-[rgba(255,211,79,0.35)] bg-[rgba(45,36,12,0.78)] text-amber-soft max-tablet:top-4"
+				class="{HUD_TAG} top-[52px] left-4 border-[rgba(90,168,228,0.35)] bg-[rgba(13,28,42,0.82)] text-blue-bright max-tablet:top-[52px]"
+				role="status"
+			>
+				{supportsZoomed
+					? 'Precision zoom on · Right-click to reset'
+					: 'Right-click for precision zoom'}
+			</div>
+			<div
+				class="{HUD_TAG} pointer-events-none top-[88px] right-4 border-[rgba(255,211,79,0.35)] bg-[rgba(45,36,12,0.78)] text-amber-soft max-tablet:top-4"
 				role="status"
 				title="Fast surface-angle estimate. Layer-mask island analysis may identify additional areas."
 			>
@@ -367,7 +408,9 @@
 										: generatingSupports
 											? 'Generating initial supports · Middle-drag to orbit'
 											: placingSupports
-												? 'Click model to place · Middle-drag to orbit'
+												? supportsZoomed
+													? 'Zoomed view · Click model to place · Middle-drag to orbit'
+													: 'Click model to place · Right-click to zoom · Middle-drag to orbit'
 												: model
 													? `Drag upper corners to scale · Rings rotate in ${ROTATION_SNAP_DEGREES}° steps`
 													: 'Middle-drag to orbit'}
