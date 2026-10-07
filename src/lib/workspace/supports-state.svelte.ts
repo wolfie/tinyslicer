@@ -51,6 +51,19 @@ export class SupportsState {
 		return true;
 	}
 
+	move(id: string, hit: ModelSurfaceHit): boolean {
+		if (this.autoBuild.status === 'building') return false;
+		const index = this.points.findIndex((point) => point.id === id);
+		if (index === -1) return false;
+
+		const movedPoint = this.#createPointFromHit(id, hit);
+		this.points = this.points.map((point, pointIndex) =>
+			pointIndex === index ? movedPoint : point
+		);
+		this.#onChanged();
+		return true;
+	}
+
 	/** Kick off the conservative auto-support scan, unless a set already exists. */
 	generateInitial(geometry: AutoSupportBuildInput) {
 		if (this.autoDiagnostics !== null || this.points.length > 0) return;
@@ -73,8 +86,12 @@ export class SupportsState {
 	}
 
 	#createPoint(hit: ModelSurfaceHit): SupportPoint {
+		return this.#createPointFromHit(`support-point-${this.#nextPointId++}`, hit);
+	}
+
+	#createPointFromHit(id: string, hit: ModelSurfaceHit): SupportPoint {
 		return {
-			id: `support-point-${this.#nextPointId++}`,
+			id,
 			position: { ...hit.position },
 			normal: { ...hit.normal },
 			...(hit.lowerContactPosition ? { lowerContactPosition: { ...hit.lowerContactPosition } } : {})

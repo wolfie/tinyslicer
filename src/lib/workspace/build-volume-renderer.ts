@@ -109,6 +109,24 @@ export function pickSupportPoint(event: PointerEvent): string | null {
 	return getViewport(event.currentTarget as HTMLCanvasElement).pickSupportPoint(event);
 }
 
+export function startSupportPointDrag(
+	event: PointerEvent,
+	onChange: (supportPointId: string, hit: ModelSurfaceHit) => void
+): boolean {
+	return getViewport(event.currentTarget as HTMLCanvasElement).startSupportPointDrag(
+		event,
+		onChange
+	);
+}
+
+export function updateSupportPointDrag(event: PointerEvent): boolean {
+	return getViewport(event.currentTarget as HTMLCanvasElement).updateSupportPointDrag(event);
+}
+
+export function stopSupportPointDrag(event: PointerEvent): boolean {
+	return getViewport(event.currentTarget as HTMLCanvasElement).stopSupportPointDrag(event);
+}
+
 export function updateModelTransform(event: PointerEvent): boolean {
 	return getViewport(event.currentTarget as HTMLCanvasElement).updateModelInteraction(event);
 }

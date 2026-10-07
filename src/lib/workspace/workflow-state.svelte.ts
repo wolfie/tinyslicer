@@ -98,6 +98,11 @@ export class WorkflowState {
 		return this.#supports.add(hit);
 	}
 
+	moveSupport(id: string, hit: ModelSurfaceHit): boolean {
+		if (this.step !== 'supports' || !this.#scene.isPlaceable) return false;
+		return this.#supports.move(id, hit);
+	}
+
 	cancelDiscard = () => {
 		this.discardDialogOpen = false;
 	};

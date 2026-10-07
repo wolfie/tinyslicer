@@ -8,10 +8,13 @@
 		pickModelSurface,
 		ROTATION_SNAP_DEGREES,
 		startModelTransform,
+		startSupportPointDrag,
 		startScanDrag,
 		stopModelTransform,
+		stopSupportPointDrag,
 		stopScanDrag,
 		updateModelTransform,
+		updateSupportPointDrag,
 		updateScanDrag,
 		type BuildVolumeInteractionMode,
 		type ModelInteraction,
@@ -64,6 +67,7 @@
 		onRotationChange: (rotation: ModelRotation) => void;
 		onScaleChange?: (scale: ModelScale) => void;
 		onSupportPointPlaced: (hit: ModelSurfaceHit) => void;
+		onSupportPointMoved: (id: string, hit: ModelSurfaceHit) => void;
 		onEnterSupports: () => void;
 		onEnterPreview: () => void;
 		onBackToPrepare: () => void;
@@ -106,6 +110,7 @@
 		onRotationChange,
 		onScaleChange = () => {},
 		onSupportPointPlaced,
+		onSupportPointMoved,
 		onEnterSupports,
 		onEnterPreview,
 		onBackToPrepare,
@@ -119,6 +124,7 @@
 	const canvasMetrics = new CanvasMetrics();
 	let modelInteraction = $state<ModelInteraction | null>(null);
 	let scanDragging = $state(false);
+	let supportDragging = $state(false);
 	let supportsZoomed = $state(false);
 	let supportsZoomFocus = $state<{ position: Point3; x: number; y: number } | null>(null);
 	let placingSupports = $derived(interactionMode === 'place-supports');
@@ -126,9 +132,11 @@
 	let previewPercent = $derived(Math.round(previewProgress * 100));
 	let autoSupportPercent = $derived(Math.round(autoSupportProgress * 100));
 	let generatingSupports = $derived(placingSupports && autoSupportStatus === 'building');
-	let orbitHintActive = $derived(camera.orbiting || modelInteraction !== null || scanDragging);
+	let orbitHintActive = $derived(
+		camera.orbiting || modelInteraction !== null || scanDragging || supportDragging
+	);
 	let canvasCursorClass = $derived(
-		camera.orbiting || modelInteraction !== null || scanDragging
+		camera.orbiting || modelInteraction !== null || scanDragging || supportDragging
 			? 'cursor-grabbing'
 			: generatingSupports
 				? 'cursor-progress'
@@ -144,6 +152,7 @@
 
 	$effect(() => {
 		if (!placingSupports) {
+			supportDragging = false;
 			supportsZoomed = false;
 			supportsZoomFocus = null;
 		}
@@ -204,6 +213,10 @@
 		}
 
 		if (placingSupports && event.button === 0) {
+			if (!generatingSupports && startSupportPointDrag(event, onSupportPointMoved)) {
+				supportDragging = true;
+				return;
+			}
 			const hit = pickModelSurface(event);
 			if (hit) {
 				event.preventDefault();
@@ -242,12 +255,17 @@
 	}
 
 	function handlePointerMove(event: PointerEvent) {
+		if (placingSupports && updateSupportPointDrag(event)) return;
 		if (interactionMode === 'transform-model' && updateModelTransform(event)) return;
 		if (previewing && scanEnabled && updateScanDrag(event)) return;
 		camera.update(event);
 	}
 
 	function handlePointerEnd(event: PointerEvent) {
+		if (placingSupports && stopSupportPointDrag(event)) {
+			supportDragging = false;
+			return;
+		}
 		if (interactionMode === 'transform-model' && stopModelTransform(event)) return;
 		if (previewing && scanEnabled && stopScanDrag(event)) {
 			scanDragging = false;
@@ -319,7 +337,7 @@
 			onpointercancel={handlePointerEnd}
 			onauxclick={(event) => event.preventDefault()}
 			oncontextmenu={(event) => event.preventDefault()}
-			aria-label={`Interactive 3D view of the ${TINYMAKER_PROFILE.buildVolume.x} by ${TINYMAKER_PROFILE.buildVolume.y} by ${TINYMAKER_PROFILE.buildVolume.z} millimetre ${TINYMAKER_PROFILE.name} build volume${model ? ` containing ${model.name}` : ''}. ${placingSupports ? 'Click the model to place a support point. Right-click to toggle precision zoom. ' : model ? `Drag the model to move it, drag an upper corner to scale it, click an arrow to nudge it, or drag a colored ring to rotate it in ${ROTATION_SNAP_DEGREES} degree steps. ` : ''}Drag with the middle mouse button to orbit.`}
+			aria-label={`Interactive 3D view of the ${TINYMAKER_PROFILE.buildVolume.x} by ${TINYMAKER_PROFILE.buildVolume.y} by ${TINYMAKER_PROFILE.buildVolume.z} millimetre ${TINYMAKER_PROFILE.name} build volume${model ? ` containing ${model.name}` : ''}. ${placingSupports ? 'Click the model to place a support point, or drag a red support point along the model surface. Right-click to toggle precision zoom. ' : model ? `Drag the model to move it, drag an upper corner to scale it, click an arrow to nudge it, or drag a colored ring to rotate it in ${ROTATION_SNAP_DEGREES} degree steps. ` : ''}Drag with the middle mouse button to orbit.`}
 		></canvas>
 		<div class="absolute top-4 left-4 flex gap-2" aria-label="Axis directions">
 			<span
@@ -397,23 +415,25 @@
 						? 'Moving model'
 						: modelInteraction?.kind === 'scale'
 							? `Scaling model · ${Math.round(modelScale * 100)}%`
-							: camera.orbiting
-								? 'Orbiting view'
-								: previewing && scanEnabled
-									? scanDragging
-										? 'Scrubbing CAT-scan plane'
-										: 'Drag the scan plane · Drag elsewhere to orbit'
-									: previewing
-										? 'Preview is read-only · Drag to orbit'
-										: generatingSupports
-											? 'Generating initial supports · Middle-drag to orbit'
-											: placingSupports
-												? supportsZoomed
-													? 'Zoomed view · Click model to place · Middle-drag to orbit'
-													: 'Click model to place · Right-click to zoom · Middle-drag to orbit'
-												: model
-													? `Drag upper corners to scale · Rings rotate in ${ROTATION_SNAP_DEGREES}° steps`
-													: 'Middle-drag to orbit'}
+							: supportDragging
+								? 'Moving support along model surface'
+								: camera.orbiting
+									? 'Orbiting view'
+									: previewing && scanEnabled
+										? scanDragging
+											? 'Scrubbing CAT-scan plane'
+											: 'Drag the scan plane · Drag elsewhere to orbit'
+										: previewing
+											? 'Preview is read-only · Drag to orbit'
+											: generatingSupports
+												? 'Generating initial supports · Middle-drag to orbit'
+												: placingSupports
+													? supportsZoomed
+														? 'Click to place · Drag red points to move · Middle-drag to orbit'
+														: 'Click to place · Drag red points to move · Right-click to zoom'
+													: model
+														? `Drag upper corners to scale · Rings rotate in ${ROTATION_SNAP_DEGREES}° steps`
+														: 'Middle-drag to orbit'}
 			</span>
 		</div>
 		{#if modelOutsideBuildVolume || (interactionMode === 'transform-model' && canEnterSupports)}

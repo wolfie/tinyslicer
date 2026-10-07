@@ -165,6 +165,7 @@
 				onRotationChange={workspace.scene.setRotation}
 				onScaleChange={workspace.scene.setScale}
 				onSupportPointPlaced={(hit) => workspace.workflow.placeSupport(hit)}
+				onSupportPointMoved={(id, hit) => workspace.workflow.moveSupport(id, hit)}
 				onEnterSupports={() => requestStep('supports')}
 				onEnterPreview={() => requestStep('preview')}
 				onBackToPrepare={() => requestStep('prepare')}

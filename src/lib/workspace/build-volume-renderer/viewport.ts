@@ -123,6 +123,21 @@ export class BuildVolumeViewport {
 		return this.#interactions.pickSupportPoint(event);
 	}
 
+	startSupportPointDrag(
+		event: PointerEvent,
+		onChange: (supportPointId: string, hit: ModelSurfaceHit) => void
+	): boolean {
+		return this.#interactions.startSupportPointDrag(event, onChange);
+	}
+
+	updateSupportPointDrag(event: PointerEvent): boolean {
+		return this.#interactions.updateSupportPointDrag(event);
+	}
+
+	stopSupportPointDrag(event: PointerEvent): boolean {
+		return this.#interactions.stopSupportPointDrag(event);
+	}
+
 	updateModelInteraction(event: PointerEvent): boolean {
 		return this.#interactions.updateModelInteraction(event);
 	}

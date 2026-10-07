@@ -58,6 +58,12 @@ type ActiveScaleDrag = {
 
 type ActiveModelDrag = ActiveTranslationDrag | ActiveRotationDrag | ActiveScaleDrag;
 
+type ActiveSupportDrag = {
+	pointerId: number;
+	supportPointId: string;
+	onChange: (supportPointId: string, hit: ModelSurfaceHit) => void;
+};
+
 export function scaleAlongRay(
 	rayOrigin: Vector3,
 	rayDirection: Vector3,
@@ -94,6 +100,7 @@ export class ModelInteractionController {
 	#pointer = new Vector2();
 	#interactionMode: BuildVolumeInteractionMode = 'readonly';
 	#activeDrag: ActiveModelDrag | null = null;
+	#activeSupportDrag: ActiveSupportDrag | null = null;
 
 	constructor(
 		canvas: HTMLCanvasElement,
@@ -120,7 +127,7 @@ export class ModelInteractionController {
 	setInteractionMode(mode: BuildVolumeInteractionMode) {
 		if (mode === this.#interactionMode) return;
 		this.#interactionMode = mode;
-		if (mode !== 'transform-model') this.cancel();
+		this.cancel();
 	}
 
 	startModelInteraction(
@@ -251,6 +258,39 @@ export class ModelInteractionController {
 		return (hit?.object.userData.supportPointId as string | undefined) ?? null;
 	}
 
+	startSupportPointDrag(
+		event: PointerEvent,
+		onChange: (supportPointId: string, hit: ModelSurfaceHit) => void
+	): boolean {
+		if (this.#interactionMode !== 'place-supports' || event.button !== 0) return false;
+		const supportPointId = this.pickSupportPoint(event);
+		if (!supportPointId) return false;
+
+		event.preventDefault();
+		this.#canvas.setPointerCapture(event.pointerId);
+		this.#activeSupportDrag = { pointerId: event.pointerId, supportPointId, onChange };
+		return true;
+	}
+
+	updateSupportPointDrag(event: PointerEvent): boolean {
+		const drag = this.#activeSupportDrag;
+		if (!drag || drag.pointerId !== event.pointerId) return false;
+
+		const hit = this.pickModelSurface(event, true);
+		if (hit) drag.onChange(drag.supportPointId, hit);
+		return true;
+	}
+
+	stopSupportPointDrag(event: PointerEvent): boolean {
+		const drag = this.#activeSupportDrag;
+		if (!drag || drag.pointerId !== event.pointerId) return false;
+		if (this.#canvas.hasPointerCapture(event.pointerId)) {
+			this.#canvas.releasePointerCapture(event.pointerId);
+		}
+		this.#activeSupportDrag = null;
+		return true;
+	}
+
 	updateModelInteraction(event: PointerEvent): boolean {
 		const drag = this.#activeDrag;
 		if (!drag || drag.pointerId !== event.pointerId) return false;
@@ -321,12 +361,21 @@ export class ModelInteractionController {
 
 	cancel() {
 		const drag = this.#activeDrag;
-		if (!drag) return;
-		if (this.#canvas.hasPointerCapture(drag.pointerId)) {
-			this.#canvas.releasePointerCapture(drag.pointerId);
+		if (drag) {
+			if (this.#canvas.hasPointerCapture(drag.pointerId)) {
+				this.#canvas.releasePointerCapture(drag.pointerId);
+			}
+			this.#activeDrag = null;
+			drag.onInteractionChange(null);
 		}
-		this.#activeDrag = null;
-		drag.onInteractionChange(null);
+
+		const supportDrag = this.#activeSupportDrag;
+		if (supportDrag) {
+			if (this.#canvas.hasPointerCapture(supportDrag.pointerId)) {
+				this.#canvas.releasePointerCapture(supportDrag.pointerId);
+			}
+			this.#activeSupportDrag = null;
+		}
 	}
 
 	#startRotationDrag(
