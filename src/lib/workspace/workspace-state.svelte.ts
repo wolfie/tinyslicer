@@ -11,6 +11,8 @@ export type { WorkflowStep } from './workflow-state.svelte';
 export type WorkspaceStateOptions = {
 	/** Overrides the automatic-support worker factory (tests inject a synchronous stub). */
 	createAutoSupportWorker?: () => Promise<Worker>;
+	/** Overrides the support-topology worker factory (tests inject a synchronous stub). */
+	createSupportAnalysisWorker?: () => Promise<Worker>;
 	/** Overrides the slice worker factory (tests inject a synchronous stub). */
 	createPreviewWorker?: () => Promise<Worker>;
 	export?: ProjectExportOptions;
@@ -34,8 +36,11 @@ export class WorkspaceState {
 		this.preview = new PreviewBuild(options.createPreviewWorker);
 		this.scan = new SliceScanState(this.preview);
 		this.export = new ProjectExport(options.export);
-		this.supports = new SupportsState(options.createAutoSupportWorker, () =>
-			this.workflow.onSupportSetChanged()
+		this.supports = new SupportsState(
+			options.createAutoSupportWorker,
+			() => this.workflow.onSupportSetChanged(),
+			options.createSupportAnalysisWorker,
+			() => this.workflow.onSupportOutputChanged()
 		);
 		this.workflow = new WorkflowState(
 			this.scene,
@@ -55,7 +60,7 @@ export class WorkspaceState {
 	}
 
 	dispose() {
-		this.supports.autoBuild.dispose();
+		this.supports.dispose();
 		this.preview.dispose();
 		this.export.dispose();
 	}

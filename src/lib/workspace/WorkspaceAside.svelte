@@ -57,7 +57,7 @@
 </script>
 
 <aside
-	class="grid grid-rows-[auto_auto_1fr] border-l border-line bg-panel max-tablet:hidden"
+	class="grid h-full min-h-0 [scrollbar-gutter:stable] grid-rows-[auto_auto_1fr] overflow-y-auto overscroll-contain border-l border-line bg-panel max-tablet:hidden"
 	aria-label="Scene properties"
 >
 	<section class="border-b border-line p-[22px]">
@@ -176,6 +176,126 @@
 						<small class="ml-1.5 text-[9px] text-[#6e917b]"
 							>{supports.points.length === 1 ? 'point placed' : 'points placed'}</small
 						>
+						<div class="mt-3 border-t border-green/20 pt-3">
+							{#if supports.analysis.status === 'building'}
+								<div class="text-[9px] font-semibold text-[#86bddf]" role="status">
+									Checking print connectivity… {Math.round(supports.analysis.progress * 100)}%
+								</div>
+							{:else if supports.analysis.status === 'error'}
+								<div class="text-[9px] leading-[1.45] text-amber-soft" role="status">
+									Support check unavailable: {supports.analysis.error ?? 'analysis failed'}
+								</div>
+							{:else if supports.analysis.result}
+								{@const analysis = supports.analysis.result}
+								{#if !analysis.meshIsWatertightAtPixelSamples}
+									<div class="text-[9px] leading-[1.45] text-amber-soft" role="status">
+										Support analysis is uncertain because the sampled mesh is open.
+									</div>
+								{:else if analysis.disconnectedRegionCount > 0}
+									<div class="rounded-md border border-red/30 bg-red/10 px-2 py-2" role="alert">
+										<div class="text-[9px] font-bold tracking-[0.03em] text-red-soft uppercase">
+											Disconnected print regions
+										</div>
+										<p class="mt-1 mb-0 text-[9px] leading-[1.45] text-[#c89591]">
+											{analysis.disconnectedRegionCount}
+											{analysis.disconnectedRegionCount === 1 ? 'region begins' : 'regions begin'} without
+											a path to the plate. First detected near
+											{#if analysis.regions[0]}
+												X {formatMillimetres(analysis.regions[0].centroidMm.x)}, Y
+												{formatMillimetres(analysis.regions[0].centroidMm.y)},
+											{/if}
+											Z
+											{formatMillimetres(analysis.firstDisconnectedZMm ?? 0)} mm.
+										</p>
+									</div>
+								{:else}
+									<div
+										class="flex items-center gap-[7px] text-[9px] font-semibold text-green-soft"
+										role="status"
+									>
+										<span class="u-dot text-green"></span>No disconnected print regions detected
+									</div>
+								{/if}
+								{#if analysis.meshIsWatertightAtPixelSamples && analysis.disconnectedRegionCount === 0}
+									{#if analysis.coverage.missingContactCount > 0}
+										{@const firstRisk = analysis.coverage.risks[0]}
+										<div class="mt-2 rounded-md border border-amber/30 bg-amber/10 px-2 py-2">
+											<div class="text-[9px] font-bold tracking-[0.03em] text-amber-soft uppercase">
+												Support coverage warning
+											</div>
+											<p class="mt-1 mb-0 text-[9px] leading-[1.45] text-[#bfa96f]">
+												About {analysis.coverage.missingContactCount}
+												{analysis.coverage.missingContactCount === 1
+													? 'additional contact is'
+													: 'additional contacts are'} suggested by the experimental
+												{formatMillimetres(analysis.coverage.coverageRadiusMm)} mm coverage rule.
+												{#if firstRisk}
+													First risk near X {formatMillimetres(firstRisk.positionMm.x)}, Y
+													{formatMillimetres(firstRisk.positionMm.y)}, Z
+													{formatMillimetres(firstRisk.positionMm.z)} mm.
+												{/if}
+											</p>
+										</div>
+									{:else}
+										<div class="mt-2 text-[9px] leading-[1.45] text-[#718d7d]">
+											No gaps found by the experimental
+											{formatMillimetres(analysis.coverage.coverageRadiusMm)} mm coverage rule.
+										</div>
+									{/if}
+								{/if}
+								{#if analysis.stability.slenderSupportCount > 0}
+									<div class="mt-2 rounded-md border border-amber/30 bg-amber/10 px-2 py-2">
+										<div class="text-[9px] font-bold tracking-[0.03em] text-amber-soft uppercase">
+											Tall support warning
+										</div>
+										<p class="mt-1 mb-0 text-[9px] leading-[1.45] text-[#bfa96f]">
+											{analysis.stability.slenderSupportCount}
+											{analysis.stability.slenderSupportCount === 1
+												? 'shaft exceeds'
+												: 'shafts exceed'} the experimental unbraced slenderness threshold. Longest flagged
+											shaft:
+											{formatMillimetres(analysis.stability.risks[0]?.shaftLengthMm ?? 0)} mm.
+										</p>
+									</div>
+								{/if}
+								{#if analysis.bracing.structures.length > 0}
+									<div class="mt-2 rounded-md border border-blue/25 bg-blue/10 px-2 py-2">
+										<div class="text-[9px] font-bold tracking-[0.03em] text-[#9bccec] uppercase">
+											Automatic scaffolding
+										</div>
+										<p class="mt-1 mb-2 text-[9px] leading-[1.45] text-[#789ab2]">
+											{analysis.bracing.beamCount}
+											{analysis.bracing.beamCount === 1
+												? 'diagonal brace is'
+												: 'diagonal braces are'} available for tall neighboring posts.
+											{#if analysis.bracing.unbracedSupportPointIds.length > 0}
+												{analysis.bracing.unbracedSupportPointIds.length} flagged
+												{analysis.bracing.unbracedSupportPointIds.length === 1
+													? 'post has'
+													: 'posts have'} no reachable neighbor.
+											{/if}
+										</p>
+										<button
+											type="button"
+											class="u-chip w-full cursor-pointer justify-center border-blue/25 text-[#8fc8ec] hover:bg-blue/10 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue"
+											onclick={() => supports.setBracingEnabled(!supports.bracingEnabled)}
+										>
+											{supports.bracingEnabled
+												? 'Disable automatic braces'
+												: 'Enable automatic braces'}
+										</button>
+									</div>
+								{:else if analysis.stability.slenderSupportCount > 0}
+									<div class="mt-2 text-[9px] leading-[1.45] text-[#8d8062]">
+										No collision-free neighboring post was available for automatic bracing.
+									</div>
+								{/if}
+							{:else}
+								<div class="text-[9px] leading-[1.45] text-[#718d7d]">
+									The print-connectivity check runs after support generation or an edit.
+								</div>
+							{/if}
+						</div>
 					</div>
 				{:else if workflow.step === 'preview'}
 					<div class="rounded-lg border border-green/30 bg-green/12 p-3">

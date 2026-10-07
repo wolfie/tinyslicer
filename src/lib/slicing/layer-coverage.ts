@@ -1,4 +1,5 @@
 import { raftCrossSectionAtZ, type RaftIsland } from '$lib/supports/raft-plan';
+import type { BinaryLayerMask } from '$lib/supports/detect-unsupported';
 import {
 	DEFAULT_MODEL_SCALE,
 	IDENTITY_MODEL_ROTATION,
@@ -14,7 +15,8 @@ import type { SupportPlan } from '$lib/workspace/supports';
 import {
 	ModelLayerMaskRasterizer,
 	TINYMAKER_LAYER_MASK_PROFILE,
-	type LayerMaskRasterizationProfile
+	type LayerMaskRasterizationProfile,
+	type VerticalModelInterval
 } from './model-layer-masks';
 import { supportPlanCirclesAtZ } from './support-cross-sections';
 
@@ -106,6 +108,22 @@ export class LayerCoverageRasterizer {
 
 	layerZMm(layerIndex: number): number {
 		return this.#inner.layerZMm(layerIndex);
+	}
+
+	/** Native binary model mask for analysis passes configured without supersampling. */
+	modelMask(layerIndex: number): BinaryLayerMask {
+		if (this.supersample !== 1) {
+			throw new Error('modelMask is available only when supersample is 1.');
+		}
+		return this.#inner.createLayerMask(layerIndex);
+	}
+
+	/** Model occupancy intervals along one native-resolution build-direction ray. */
+	modelIntervalsAtPixel(column: number, row: number): readonly VerticalModelInterval[] {
+		if (this.supersample !== 1) {
+			throw new Error('modelIntervalsAtPixel is available only when supersample is 1.');
+		}
+		return this.#inner.verticalIntervalsAtPixel(column, row);
 	}
 
 	coverageMask(layerIndex: number): CoverageMask {

@@ -117,6 +117,23 @@ export class WorkflowState {
 
 	/** Wired by the composition root whenever manual or automatic supports change. */
 	onSupportSetChanged() {
+		const model = this.#scene.model;
+		if (model) {
+			this.#supports.analysis.request({
+				model,
+				translation: this.#scene.translation,
+				rotation: this.#scene.rotation,
+				scale: this.#scene.scale,
+				supportPlan: this.#supports.basePlan,
+				supportPoints: this.#supports.points,
+				raftIslands: this.#supports.raftPlan.islands
+			});
+		}
+		this.onSupportOutputChanged();
+	}
+
+	/** Invalidates sliced output when derived braces are toggled or regenerated. */
+	onSupportOutputChanged() {
 		this.#preview.reset();
 		this.#scan.reset();
 		if (this.step === 'preview') this.#requestPreview();
