@@ -39,11 +39,15 @@ TinySlicer initially targets one fixed printer profile.
 | LCD resolution         |     320 x 240 px |
 | Physical X size        |          40.8 mm |
 | Physical Y size        |          30.6 mm |
-| Maximum Z              |            60 mm |
+| Maximum compatible Z   |            54 mm |
 | Pixel pitch            | 0.1275 mm square |
 | File-format Z interval |          0.05 mm |
 
-The 60 mm Z limit is derived from the printer's example jobs. It should remain a named profile constant so that it can be corrected without changing slicing code.
+TinyMaker officially reports a 60 mm Z build volume, but stock firmware v1.0.2 rejects
+projects containing more than 1080 numbered PNG files. At the mandatory 0.05 mm file
+interval, TinySlicer's firmware-compatible Z limit is therefore 54 mm. The mismatch is
+documented beside the named profile constants in `src/lib/printer/tinymaker.ts`, including
+links to the official report and firmware check.
 
 The application does not provide a 0.1 mm slicing mode. TinyMaker always interprets the image sequence on a 0.05 mm grid. When the printer hardware is configured for a 0.1 mm step, the firmware skips alternating images; TinySlicer still exports the complete 0.05 mm sequence.
 
@@ -268,7 +272,7 @@ Required fixed profile metadata includes:
 ;resolutionY:240
 ;machineX:40.8
 ;machineY:30.6
-;machineZ:60
+;machineZ:54
 ;projectType:LCD_mirror
 ;mirror:1
 ```
@@ -321,7 +325,7 @@ The UI must provide actionable errors for:
 - Unsupported or corrupt STL files.
 - Empty geometry.
 - Models or supports outside the build volume.
-- Models exceeding the 60 mm Z limit.
+- Models exceeding the firmware-compatible 54 mm Z limit.
 - Open contours or slicing failures.
 - Browser memory exhaustion or worker failure.
 - PNG or ZIP generation failure.

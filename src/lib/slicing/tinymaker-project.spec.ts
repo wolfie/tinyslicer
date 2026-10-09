@@ -19,6 +19,7 @@ describe('TinyMaker project metadata', () => {
 		expect(gcode).toContain(';estimatedPrintTime:147.4');
 		expect(gcode).toContain(';volume:2.39172');
 		expect(gcode).toContain(';resolutionX:320\n;resolutionY:240');
+		expect(gcode).toContain(';machineZ:54');
 		expect(gcode).toContain(';projectType:LCD_mirror');
 		expect(gcode).toContain(';normalExposureTime:13');
 		expect(gcode).toContain(';bottomLayerExposureTime:38');
